@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Cached API responses & large intermediate files
+data/cache/
+data/raw/*.json
+data/raw/*.sdf
+data/raw/*.pdb
+data/raw/*.cif
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

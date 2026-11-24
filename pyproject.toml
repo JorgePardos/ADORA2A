@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "adora2a-audit"
+version = "0.1.0"
+description = "Retrospective virtual screening, structure selection, and bioactivity curation audit for the human Adenosine A2A receptor (GPCR)."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Jorge Pardos" }]
+keywords = ["gpcr", "adora2a", "virtual-screening", "cheminformatics", "rdkit", "drug-discovery"]
+dependencies = [
+    "rdkit>=2024.3",
+    "httpx>=0.27",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "matplotlib>=3.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "jupyter>=1.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/adora2a_audit"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
