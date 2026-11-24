@@ -1,0 +1,13 @@
+name,role,clinical_status,inchikey,mw,has_pains,pains_alerts,has_brenk,brenk_alerts
+ZM241385,Antagonist / Inverse agonist (4EIY co-crystal probe),Preclinical gold-standard probe,PWTBZOIUWZOPFT-UHFFFAOYSA-N,337.3,False,None,False,None
+Istradefylline,"Antagonist (FDA-approved for Parkinson's disease, Nourianz)",Approved (Phase 4),IQVRBWUUXZMOPW-PKNBQFBNSA-N,384.4,False,None,False,None
+Caffeine,"Antagonist (non-selective methylxanthine, 5MZP co-crystal)",Approved (Phase 4),RYYVLZVUVIJVGH-UHFFFAOYSA-N,194.2,False,None,False,None
+Theophylline,"Antagonist (methylxanthine, 5MZJ co-crystal)",Approved (Phase 4),ZFXYFBGIUFBOJW-UHFFFAOYSA-N,180.2,False,None,False,None
+Preladenant,"Antagonist (selective clinical candidate, SCH-420814)",Phase 3,KTKAWQXBVXOTLL-UHFFFAOYSA-N,514.6,False,None,False,None
+Vipadenant,Antagonist (5OLH co-crystal),Phase 2,HQSBCDPYXDGTCL-UHFFFAOYSA-N,321.3,False,None,True,aniline
+Tozadenant,Antagonist (5OLO co-crystal),Phase 3,XNBRWUQWSKXMPW-UHFFFAOYSA-N,406.5,True,anil_di_alk_C(246),False,None
+Imaradenant,"Antagonist (AZD4635, 6GT3 co-crystal, immuno-oncology)",Phase 2,NCWQLHHDGDXIJN-UHFFFAOYSA-N,315.7,False,None,True,2-halo_pyridine
+Adenosine,Endogenous full agonist (2YDO / 9EE8 co-crystal),Approved (Phase 4),OIRDTQYFTABQOQ-KQYNXXCUSA-N,267.2,False,None,False,None
+NECA,Agonist (2YDV / 5G53 co-crystal),Preclinical probe,JADDQZYHOWSFJD-FLNNQWSLSA-N,308.3,False,None,False,None
+CGS21680,Selective A2A agonist (4UHR co-crystal),Preclinical probe,PAOANWZGLPPROA-RQXXJAGISA-N,499.5,False,None,False,None
+Regadenoson,"Agonist (FDA-approved myocardial perfusion agent, Lexiscan)",Approved (Phase 4),LZPZPHGJDAGEJZ-AKAIJSEGSA-N,390.4,False,None,False,None

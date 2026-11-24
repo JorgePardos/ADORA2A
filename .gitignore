@@ -19,6 +19,7 @@ data/raw/*.json
 data/raw/*.sdf
 data/raw/*.pdb
 data/raw/*.cif
+.licenses/
 
 # OS / Editor
 .DS_Store

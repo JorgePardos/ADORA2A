@@ -1,0 +1,326 @@
+{
+  "n_structures_audited": 188,
+  "structures_by_state": {
+    "Inactive": 172,
+    "Active": 15,
+    "Intermediate": 1
+  },
+  "structures_na_by_state": {
+    "Active": 0,
+    "Inactive": 145,
+    "Intermediate": 0
+  },
+  "pocket_checks": {
+    "4EIY_wt": true,
+    "4EIY_center": [
+      -0.424,
+      8.527,
+      17.127
+    ],
+    "5IU4_mutations": {
+      "88": [
+        "THR",
+        "ALA"
+      ],
+      "277": [
+        "SER",
+        "ALA"
+      ]
+    },
+    "9EE8_wt": true
+  },
+  "curation_waterfall": {
+    "01_raw_ki_ic50_records": 12105,
+    "02_confidence_ge_8": 12105,
+    "03_exact_relation_eq": 8349,
+    "04_valid_nm_and_smiles": 8347,
+    "05_no_validity_warning": 8167,
+    "06_rdkit_standardized_organic": 8150,
+    "07_cohort_Ki_B_measurements": 5901,
+    "07b_cohort_IC50_B_measurements": 1224,
+    "07c_cohort_IC50_F_measurements": 496,
+    "08_unique_inchikey_Ki_B": 4972,
+    "09_discrepant_gt_1log_Ki_B": 44,
+    "10_agonists_excluded_from_inactive_screen": 546,
+    "11_potent_non_agonist_actives_pKi_ge_7": 2128
+  },
+  "bias_audit": {
+    "unmatched_logistic_auc": 0.8142,
+    "unmatched_rf_auc": 0.7834,
+    "matched_logistic_auc": 0.4841,
+    "matched_rf_auc": 0.3464,
+    "passed_go_nogo": true
+  },
+  "cognate_redocking": {
+    "top_pose_kcal": -9.082,
+    "native_like_pose_rank": 3,
+    "native_like_pose_kcal": -8.927,
+    "delta_kcal": 0.155,
+    "furan_oxygen_distance_angstrom": 0.41
+  },
+  "benchmark_metrics": [
+    {
+      "method": "1D Fisicoqu\u00edmico (Control)",
+      "n_total": 1000,
+      "n_actives": 25,
+      "hit_rate": 0.025,
+      "ef1": 0.0,
+      "ef1_max": 40.0,
+      "ef5": 0.0,
+      "ef5_max": 20.0,
+      "bedroc_20": 0.025742698414656453,
+      "roc_auc": 0.34635897435897434,
+      "pr_auc": 0.01949272322862368,
+      "accuracy_top1pct": 0.965,
+      "naive_all_inactive_accuracy": 0.975
+    },
+    {
+      "method": "2D ECFP4 (vs ZM241385)",
+      "n_total": 1000,
+      "n_actives": 25,
+      "hit_rate": 0.025,
+      "ef1": 36.0,
+      "ef1_max": 40.0,
+      "ef5": 9.6,
+      "ef5_max": 20.0,
+      "bedroc_20": 0.5191113179671871,
+      "roc_auc": 0.7253333333333334,
+      "pr_auc": 0.43262761139571887,
+      "accuracy_top1pct": 0.983,
+      "naive_all_inactive_accuracy": 0.975
+    },
+    {
+      "method": "3D Forma + USRCAT (vs ZMA)",
+      "n_total": 1000,
+      "n_actives": 25,
+      "hit_rate": 0.025,
+      "ef1": 8.0,
+      "ef1_max": 40.0,
+      "ef5": 6.3999999999999995,
+      "ef5_max": 20.0,
+      "bedroc_20": 0.35476168021399135,
+      "roc_auc": 0.7219282051282052,
+      "pr_auc": 0.16582265245735128,
+      "accuracy_top1pct": 0.969,
+      "naive_all_inactive_accuracy": 0.975
+    },
+    {
+      "method": "3D Docking (AutoDock Vina \u00b7 4EIY)",
+      "n_total": 1000,
+      "n_actives": 25,
+      "hit_rate": 0.025,
+      "ef1": 0.0,
+      "ef1_max": 40.0,
+      "ef5": 0.7999999999999999,
+      "ef5_max": 20.0,
+      "bedroc_20": 0.06285345025733616,
+      "roc_auc": 0.5843897435897436,
+      "pr_auc": 0.0328798388816957,
+      "accuracy_top1pct": 0.965,
+      "naive_all_inactive_accuracy": 0.975
+    }
+  ],
+  "benchmark_bootstrap_ci": {
+    "1D Fisicoqu\u00edmico (Control)": {
+      "ef1": [
+        0.0,
+        0.0
+      ],
+      "ef5": [
+        0.0,
+        0.7999999999999999
+      ],
+      "bedroc_20": [
+        0.002872640520270544,
+        0.06612581490787976
+      ],
+      "roc_auc": [
+        0.2320189743589744,
+        0.48706051282051277
+      ],
+      "pr_auc": [
+        0.016423825067430235,
+        0.03166897848822633
+      ]
+    },
+    "2D ECFP4 (vs ZM241385)": {
+      "ef1": [
+        16.0,
+        40.0
+      ],
+      "ef5": [
+        5.6000000000000005,
+        13.6
+      ],
+      "bedroc_20": [
+        0.33022577894871274,
+        0.6938668198145006
+      ],
+      "roc_auc": [
+        0.5912594871794872,
+        0.8470656410256409
+      ],
+      "pr_auc": [
+        0.24419800761377375,
+        0.6306445957905645
+      ]
+    },
+    "3D Forma + USRCAT (vs ZMA)": {
+      "ef1": [
+        0.0,
+        20.0
+      ],
+      "ef5": [
+        3.1999999999999997,
+        10.4
+      ],
+      "bedroc_20": [
+        0.20714057241285339,
+        0.5132278892233303
+      ],
+      "roc_auc": [
+        0.5958748717948719,
+        0.827231794871795
+      ],
+      "pr_auc": [
+        0.0714796997877542,
+        0.3180232903611923
+      ]
+    },
+    "3D Docking (AutoDock Vina \u00b7 4EIY)": {
+      "ef1": [
+        0.0,
+        0.0
+      ],
+      "ef5": [
+        0.0,
+        2.8199999999999816
+      ],
+      "bedroc_20": [
+        0.017354155759019965,
+        0.12520829846496986
+      ],
+      "roc_auc": [
+        0.47819179487179486,
+        0.6792184615384615
+      ],
+      "pr_auc": [
+        0.02485476241428057,
+        0.052414885391468366
+      ]
+    }
+  },
+  "scaffold_hop_no_zma_analogues": {
+    "n_actives_remaining": 21,
+    "2d_ecfp4": {
+      "method": "2D ECFP4 (sin an\u00e1logos ZMA, ECFP4<0.35)",
+      "n_total": 996,
+      "n_actives": 21,
+      "hit_rate": 0.02108433734939759,
+      "ef1": 23.714285714285715,
+      "ef1_max": 47.42857142857143,
+      "ef5": 7.588571428571429,
+      "ef5_max": 19.92,
+      "bedroc_20": 0.4022308395733143,
+      "roc_auc": 0.673015873015873,
+      "pr_auc": 0.3027701812710756,
+      "accuracy_top1pct": 0.9789156626506024,
+      "naive_all_inactive_accuracy": 0.9789156626506024
+    },
+    "autodock_vina": {
+      "method": "AutoDock Vina (sin an\u00e1logos ZMA, ECFP4<0.35)",
+      "n_total": 996,
+      "n_actives": 21,
+      "hit_rate": 0.02108433734939759,
+      "ef1": 0.0,
+      "ef1_max": 47.42857142857143,
+      "ef5": 0.9485714285714286,
+      "ef5_max": 19.92,
+      "bedroc_20": 0.0715695341873314,
+      "roc_auc": 0.6253724053724055,
+      "pr_auc": 0.03187417618645286,
+      "accuracy_top1pct": 0.9688755020080321,
+      "naive_all_inactive_accuracy": 0.9789156626506024
+    }
+  },
+  "murcko_split_experimental_chembl": {
+    "n_compounds": 1661,
+    "random_split": {
+      "method": "2D ECFP4 ML experimental (Random Split)",
+      "n_total": 1661,
+      "n_actives": 192,
+      "hit_rate": 0.11559301625526791,
+      "ef1": 8.142156862745098,
+      "ef1_max": 8.651041666666666,
+      "ef5": 8.2390873015873,
+      "ef5_max": 8.651041666666666,
+      "bedroc_20": 0.9468950653878279,
+      "roc_auc": 0.9828433458134785,
+      "pr_auc": 0.9172673974358828,
+      "accuracy_top1pct": 0.893437688139675,
+      "naive_all_inactive_accuracy": 0.884406983744732
+    },
+    "murcko_scaffold_split": {
+      "method": "2D ECFP4 ML experimental (Murcko Scaffold Split)",
+      "n_total": 1661,
+      "n_actives": 192,
+      "hit_rate": 0.11559301625526791,
+      "ef1": 8.142156862745098,
+      "ef1_max": 8.651041666666666,
+      "ef5": 7.827132936507937,
+      "ef5_max": 8.651041666666666,
+      "bedroc_20": 0.9140872494767297,
+      "roc_auc": 0.979336850465169,
+      "pr_auc": 0.8804238346763045,
+      "accuracy_top1pct": 0.893437688139675,
+      "naive_all_inactive_accuracy": 0.884406983744732
+    }
+  },
+  "affinity_correlation_potent_n25": {
+    "AutoDock Vina (-\u0394G, kcal/mol)": {
+      "pearson_r": -0.188,
+      "pearson_r2": 0.035,
+      "pearson_p": 0.3689,
+      "spearman_rho": -0.242,
+      "spearman_p": 0.243
+    },
+    "2D ECFP4 Tanimoto (vs ZM241385)": {
+      "pearson_r": -0.007,
+      "pearson_r2": 0.0,
+      "pearson_p": 0.9727,
+      "spearman_rho": -0.096,
+      "spearman_p": 0.6469
+    },
+    "3D Shape + USRCAT (vs ZM241385)": {
+      "pearson_r": 0.239,
+      "pearson_r2": 0.057,
+      "pearson_p": 0.2505,
+      "spearman_rho": 0.248,
+      "spearman_p": 0.2324
+    }
+  },
+  "affinity_correlation_wide_n60": {
+    "AutoDock Vina (-\u0394G, kcal/mol)": {
+      "pearson_r": 0.161,
+      "pearson_r2": 0.026,
+      "pearson_p": 0.2186,
+      "spearman_rho": 0.222,
+      "spearman_p": 0.0888
+    },
+    "2D ECFP4 Tanimoto (vs ZM241385)": {
+      "pearson_r": 0.246,
+      "pearson_r2": 0.06,
+      "pearson_p": 0.0583,
+      "spearman_rho": 0.226,
+      "spearman_p": 0.0826
+    },
+    "3D Shape + USRCAT (vs ZM241385)": {
+      "pearson_r": 0.524,
+      "pearson_r2": 0.274,
+      "pearson_p": 0.0,
+      "spearman_rho": 0.5,
+      "spearman_p": 0.0
+    }
+  },
+  "runtime_seconds": 236.8
+}
