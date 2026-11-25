@@ -19,14 +19,17 @@ from adora2a_audit.metrics import (
     max_enrichment_factor,
 )
 from adora2a_audit.structures import (
+    PocketWater,
     build_structure_audit_table,
     inspect_pocket_coordinates,
+    inspect_pocket_waters,
     plot_structure_audit,
 )
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "PocketWater",
     "ScreeningMetrics",
     "__version__",
     "audit_reference_ligand_alerts",
@@ -38,6 +41,7 @@ __all__ = [
     "evaluate_screening",
     "generate_property_matched_decoys",
     "inspect_pocket_coordinates",
+    "inspect_pocket_waters",
     "max_enrichment_factor",
     "plot_structure_audit",
     "run_1d_bias_audit",

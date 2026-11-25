@@ -64,6 +64,31 @@ By merging the live **GPCRdb** structure catalog (`/services/structure/protein/a
      - `Asn253.ND2` $\cdots$ `ZMA.O25` (furan oxygen): **3.01 Å** and `ZMA.N17`: **3.17 Å**
      - Aromatic $\pi$-$\pi$ stacking against `Phe168` (`ECL2`).
    - **Orthosteric docking box (defined strictly from co-crystallized `ZMA` heavy atoms):** center `(-0.424, 8.527, 17.127)` Å, dimensions `20.0 × 20.0 × 20.0` Å.
+   - **Receptor PDBQT preparation protocol:** protein coordinates (`chain A`, residues `-1..310`, excising `ICL3-BRIL` `1001–1106`, lipids, and bulk solvent) are protonated at physiological pH 7.4 (anionic `Asp`/`Glu` carboxylates without spurious `HD` donors) and exported via a custom `RDKit`/`gemmi` PDBQT writer assigning Gasteiger partial charges and AutoDock4 atom types. Note that AutoDock Vina's native `vina` scoring function ignores partial charges completely, relying solely on atom types and covalent `HD` connectivity to identify H-bond donors and acceptors.
 
-2. **Selected Active Reference (`9EE8`, 2.63 Å):**
+2. **Crystallographic Pocket Water Audit (`4EIY_dry` vs. `4EIY_hydrated` A/B Design):**
+   - Inspecting all crystallographic `HOH` oxygen atoms within `5.0 Å` of `ZM241385` in `4EIY` with `gemmi` (`inspect_pocket_waters` in `structures.py`, full table in `data/processed/4eiy_pocket_waters_audit.csv`) identifies 15 waters.
+   - To avoid subjective cherry-picking, `4EIY_hydrated` retains every crystallographic water satisfying **four objective criteria**: (i) minimum distance to `ZM241385` heavy atoms $\le 4.5\text{ Å}$, (ii) isotropic B-factor $< 30.0\text{ Å}^2$, (iii) full occupancy ($1.00$), and (iv) $\ge 1$ hydrogen-bond contact ($\le 3.5\text{ Å}$) to a polar receptor atom (`N`/`O`/`S`) or ordered pocket water.
+
+| Water (`4EIY` Chain A) | $B$-factor ($\text{Å}^2$) | $\min d(\text{ZMA})$ (Å) | Receptor Polar Contacts ($\le 3.5\text{ Å}$) | Role & A/B Disposition |
+| :--- | :---: | :---: | :--- | :--- |
+| **`HOH 2517`** | `16.75` | `3.46` (`N15`) | `THR256.OG1` (2.62), `GLU169.OE2` (2.71), `ASN253.OD1` (2.89) | **Retained** — direct ligand–receptor H-bond bridge |
+| **`HOH 2531`** | `18.13` | `3.91` (`O25`) | `HIS250.ND1` (2.76), `MET177.O` (2.93), `ASN253.ND2` (2.99) | **Retained** — deep furan-cavity structural anchor |
+| **`HOH 2518`** | `19.76` | `3.84` (`C23`) | `ASN181.OD1` (2.79), `THR88.OG1` (2.97) | **Retained** — deep `Thr88` structural water |
+| **`HOH 2525`** | `21.01` | `3.73` (`C9`) | `PHE168.N` (2.86), `ILE66.O` (3.12) | **Retained** — `ECL2` backbone structural water |
+| **`HOH 2541`** | `21.73` | `3.48` (`C1`) | `GLU169.N` (2.98) | **Retained** — `ECL2` structural water |
+| **`HOH 2527`** | `24.84` | `4.42` (`C22`) | `SER277.OG` (2.88), `HIS278.NE2` (3.05) | **Retained** — deep `Ser277`/`His278` structural water |
+| **`HOH 2585`** | `24.86` | `2.73` (`N12`) | Anchored via `HOH 2520`/`2584` water cluster | **Retained** — water-network bridge to triazine `N12` |
+| **`HOH 2524`** | `25.06` | `2.82` (`N10`) | `TYR271.OH` (2.94) | **Retained** — direct bridge between `ZMA.N10` & `Tyr271` |
+| **`HOH 2521`** | `25.94` | `2.81` (`N19`) | Anchored via `HOH 2520`/`2522`/`2527` cluster | **Retained** — water-network bridge to triazole `N19` |
+| **`HOH 2583`** | `28.72` | `3.53` (`O4`) | `ASP170.OD1` (2.75) | **Retained** — extracellular rim bridge (`ZMA.O4`–`Asp170`) |
+| `HOH 2520` | `20.25` | `4.61` (`N19`) | `ALA81.O` (2.65) | **Excluded** ($d_{\text{ZMA}} = 4.61 > 4.5\text{ Å}$ second shell) |
+| `HOH 2584` | `31.19` | `4.08` (`N12`) | None $\le 3.5\text{ Å}$ | **Excluded** ($B = 31.19 \ge 30.0\text{ Å}^2$) |
+| `HOH 2572` | `35.18` | `3.97` (`C5`) | `GLU169.OE1` (2.80) | **Excluded** ($B = 35.18 \ge 30.0\text{ Å}^2$) |
+| `HOH 2668` | `42.88` | `2.90` (`O4`) | None $\le 3.5\text{ Å}$ | **Excluded** ($B = 42.88 \ge 30.0\text{ Å}^2$, solvent-exposed) |
+| `HOH 2505` | `47.59` | `4.47` (`C1`) | `TYR271.OH` (2.40), `SER67.O` (2.95) | **Excluded** ($B = 47.59 \ge 30.0\text{ Å}^2$, mobile rim) |
+
+   - Each of the 10 retained waters is appended to `4EIY_hydrated` with atom type `OA` plus two covalent `HD` hydrogens (`0.957 Å`) so Vina's internal receptor parser promotes the water oxygen from acceptor-only (`XS_TYPE_O_A`) to donor–acceptor (`XS_TYPE_O_DA`), keeping all 2,768 protein atom records identical between `4EIY_dry` and `4EIY_hydrated`.
+
+3. **Selected Active Reference (`9EE8`, 2.63 Å):**
    - Captures the canonical $G_s$-coupled active conformation bound to endogenous **adenosine (`ADN`)** with a 100% wild-type pocket, establishing why ribofuranosyl agonists **must be excluded** from retrospective antagonist screens on inactive `4EIY`.

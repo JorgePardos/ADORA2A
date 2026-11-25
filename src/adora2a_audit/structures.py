@@ -38,6 +38,23 @@ EXPECTED_WT_POCKET: dict[int, str] = {
 
 
 @dataclass(frozen=True)
+class PocketWater:
+    """Crystallographic water audit record near the orthosteric ligand."""
+
+    seqid: int
+    chain_id: str
+    xyz: tuple[float, float, float]
+    b_factor: float
+    occupancy: float
+    min_ligand_dist: float
+    nearest_ligand_atom: str
+    receptor_hbonds: tuple[str, ...]
+    water_hbonds: tuple[int, ...]
+    role: str
+    retained: bool
+
+
+@dataclass(frozen=True)
 class PocketInspection:
     """Atomic-level coordinate verification for a candidate reference structure."""
 
@@ -247,6 +264,135 @@ def inspect_pocket_coordinates(
         ligand_box_size_xyz=box_size,
         has_resolved_na_ion=has_na,
     )
+
+
+def inspect_pocket_waters(
+    structure_path: str | Path,
+    chain_id: str = "A",
+    ligand_resname: str = "ZMA",
+    audit_radius: float = 5.0,
+    max_retain_ligand_dist: float = 4.5,
+    max_b_factor: float = 30.0,
+    min_occupancy: float = 1.0,
+    hbond_cutoff: float = 3.5,
+) -> list[PocketWater]:
+    """Inspect crystallographic waters around `ligand_resname` and apply an objective retention rule.
+
+    Reproducible Retention Criterion (`retained=True`):
+      1. `min_ligand_dist <= max_retain_ligand_dist` (4.5 A first-shell pocket proximity to ZMA),
+      2. `b_factor < max_b_factor` (30.0 A^2 crystallographic thermal order),
+      3. `occupancy >= min_occupancy` (1.00 full occupancy), AND
+      4. At least one H-bond contact (`<= hbond_cutoff`, 3.5 A) to a polar receptor atom (N/O/S)
+         or to an ordered crystallographic water in the pocket H-bond network.
+    """
+    std_aa = {
+        "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE",
+        "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
+    }
+    st = gemmi.read_structure(str(structure_path))
+    chain = st[0][chain_id]
+
+    lig_heavy: list[tuple[str, str, np.ndarray]] = []
+    prot_polar: list[tuple[str, np.ndarray]] = []
+    all_waters: list[tuple[int, float, float, np.ndarray]] = []
+
+    for res in chain:
+        seqnum = res.seqid.num
+        if res.name in std_aa and -5 <= seqnum <= 320:
+            for atom in res:
+                if atom.element.name in {"N", "O", "S"}:
+                    prot_polar.append(
+                        (
+                            f"{res.name}{seqnum}.{atom.name.strip()}",
+                            np.array([atom.pos.x, atom.pos.y, atom.pos.z], dtype=float),
+                        )
+                    )
+        elif res.name == ligand_resname:
+            for atom in res:
+                if atom.element.name != "H":
+                    lig_heavy.append(
+                        (
+                            atom.name.strip(),
+                            atom.element.name,
+                            np.array([atom.pos.x, atom.pos.y, atom.pos.z], dtype=float),
+                        )
+                    )
+        elif res.name == "HOH":
+            for atom in res:
+                if atom.element.name == "O":
+                    all_waters.append(
+                        (
+                            seqnum,
+                            float(atom.b_iso),
+                            float(atom.occ),
+                            np.array([atom.pos.x, atom.pos.y, atom.pos.z], dtype=float),
+                        )
+                    )
+
+    if not lig_heavy:
+        raise ValueError(f"Ligand {ligand_resname!r} not found on chain {chain_id!r}.")
+
+    records: list[PocketWater] = []
+    for seqnum, b_iso, occ, w_pos in all_waters:
+        dists = [(aname, el, float(np.linalg.norm(w_pos - lpos))) for aname, el, lpos in lig_heavy]
+        nearest_name, _, min_d = min(dists, key=lambda x: x[2])
+        if min_d > audit_radius:
+            continue
+
+        lig_polar_hb = any(el in {"N", "O"} and d <= hbond_cutoff for _, el, d in dists)
+        rec_hbs = [
+            (pname, float(np.linalg.norm(w_pos - ppos)))
+            for pname, ppos in prot_polar
+            if float(np.linalg.norm(w_pos - ppos)) <= hbond_cutoff
+        ]
+        rec_hbs.sort(key=lambda x: x[1])
+        rec_hb_strs = tuple(f"{pname}:{d:.2f}" for pname, d in rec_hbs)
+
+        wat_hbs = sorted(
+            n2
+            for n2, _, _, w2 in all_waters
+            if n2 != seqnum and float(np.linalg.norm(w_pos - w2)) <= hbond_cutoff
+        )
+
+        anchored = (len(rec_hbs) > 0) or (len(wat_hbs) > 0)
+        retained = (
+            min_d <= max_retain_ligand_dist
+            and b_iso < max_b_factor
+            and occ >= min_occupancy
+            and anchored
+        )
+
+        if not retained:
+            role = (
+                f"Excluded (B={b_iso:.1f}>=30 A^2)"
+                if b_iso >= max_b_factor
+                else f"Excluded (d_ZMA={min_d:.2f}>4.5 A)"
+            )
+        elif lig_polar_hb and len(rec_hbs) > 0:
+            role = "Direct ligand-receptor H-bond bridge"
+        elif lig_polar_hb and len(wat_hbs) > 0:
+            role = "Water-network ligand H-bond bridge"
+        else:
+            role = "Deep-pocket / ECL2 structural water"
+
+        records.append(
+            PocketWater(
+                seqid=seqnum,
+                chain_id=chain_id,
+                xyz=(round(float(w_pos[0]), 3), round(float(w_pos[1]), 3), round(float(w_pos[2]), 3)),
+                b_factor=round(b_iso, 2),
+                occupancy=round(occ, 2),
+                min_ligand_dist=round(min_d, 2),
+                nearest_ligand_atom=nearest_name,
+                receptor_hbonds=rec_hb_strs,
+                water_hbonds=tuple(wat_hbs),
+                role=role,
+                retained=retained,
+            )
+        )
+
+    records.sort(key=lambda r: (not r.retained, r.seqid))
+    return records
 
 
 def plot_structure_audit(df: pd.DataFrame, out_path: str | Path) -> None:

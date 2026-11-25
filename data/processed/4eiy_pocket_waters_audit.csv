@@ -1,0 +1,16 @@
+seqid,chain_id,xyz,b_factor,occupancy,min_ligand_dist,nearest_ligand_atom,receptor_hbonds,water_hbonds,role,retained
+2517,A,"(4.75, 9.92, 17.96)",16.75,1.0,3.46,N15,THR256.OG1:2.62; GLU169.OE2:2.71; ASN253.OD1:2.89,,Direct ligand-receptor H-bond bridge,True
+2518,A,"(0.41, -1.78, 21.77)",19.76,1.0,3.84,C23,ASN181.OD1:2.79; THR88.OG1:2.97,2519; 2526,Deep-pocket / ECL2 structural water,True
+2521,A,"(-3.57, 3.47, 17.47)",25.94,1.0,2.81,N19,,2520; 2522; 2527,Water-network ligand H-bond bridge,True
+2524,A,"(-4.94, 9.54, 14.74)",25.06,1.0,2.82,N10,TYR271.OH:2.94,2514; 2525,Direct ligand-receptor H-bond bridge,True
+2525,A,"(-5.71, 11.50, 16.76)",21.01,1.0,3.73,C9,PHE168.N:2.86; ILE66.O:3.12,2524,Deep-pocket / ECL2 structural water,True
+2527,A,"(-3.25, 1.21, 15.75)",24.84,1.0,4.42,C22,SER277.OG:2.88; HIS278.NE2:3.05,2521; 2522,Deep-pocket / ECL2 structural water,True
+2531,A,"(4.55, 3.18, 21.83)",18.13,1.0,3.91,O25,HIS250.ND1:2.76; MET177.O:2.93; ASN253.ND2:2.99,,Deep-pocket / ECL2 structural water,True
+2541,A,"(-2.31, 13.58, 17.97)",21.73,1.0,3.48,C1,GLU169.N:2.98,2583,Deep-pocket / ECL2 structural water,True
+2583,A,"(-1.37, 16.21, 18.82)",28.72,1.0,3.53,O4,ASP170.OD1:2.75,2541; 2572,Deep-pocket / ECL2 structural water,True
+2585,A,"(-4.75, 6.88, 17.19)",24.86,1.0,2.73,N12,,2520; 2584,Water-network ligand H-bond bridge,True
+2505,A,"(-5.33, 13.68, 11.88)",47.59,1.0,4.47,C1,TYR271.OH:2.40; SER67.O:2.95,,Excluded (B=47.6>=30 A^2),False
+2520,A,"(-5.81, 4.85, 18.90)",20.25,1.0,4.61,N19,ALA81.O:2.65,2521; 2523; 2585,Excluded (d_ZMA=4.61>4.5 A),False
+2572,A,"(1.67, 15.90, 19.20)",35.18,1.0,3.97,C5,GLU169.OE1:2.80,2583; 2668,Excluded (B=35.2>=30 A^2),False
+2584,A,"(-5.44, 5.65, 15.33)",31.19,1.0,4.08,N12,,2514; 2522; 2585,Excluded (B=31.2>=30 A^2),False
+2668,A,"(2.49, 17.04, 16.87)",42.88,1.0,2.9,O4,,2572; 2626,Excluded (B=42.9>=30 A^2),False

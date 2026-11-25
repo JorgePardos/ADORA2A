@@ -1,15 +1,18 @@
-"""Four-level retrospective virtual screening benchmark & potency correlation audit.
+"""Retrospective virtual screening benchmark, A/B pocket hydration audit, & pKi correlation.
 
-Compares on the exact same set of curated ADORA2A antagonists + property-matched decoys:
-  1. 1D Physicochemical negative control (5-fold OOF RandomForest on 7 descriptors)
+Compares on the exact same set of curated ADORA2A antagonists + 7D-matched decoys:
+  1. 1D Physicochemical negative control (5-fold OOF RandomForest & LogisticRegression)
   2. 2D Topological similarity (ECFP4 Tanimoto vs 4EIY co-crystal ZMA + Murcko scaffold split)
   3. 3D Ligand shape/pharmacophore (ETKDGv3 conformers + USRCAT & O3A Shape Tanimoto vs ZMA)
-  4. 3D Structure-based docking (AutoDock Vina v1.2.7 into wild-type 4EIY orthosteric pocket)
+  4. 3D Structure-based docking — Dry arm (AutoDock Vina v1.2.7 on dehydrated WT 4EIY)
+  5. 3D Structure-based docking — Hydrated arm (AutoDock Vina v1.2.7 on 4EIY retaining the
+     10 ordered first-shell pocket/bridging waters selected by `inspect_pocket_waters`)
 
 Also quantifies:
-  - Cognate redocking accuracy & dehydration degeneracy on 4EIY (`ZM241385`)
+  - 10-seed cognate redocking reproducibility (Pose 1 & best-pose symmetry-corrected RMSD,
+    < 2.0 A recovery rate, and ΔE between native and non-native poses on Dry vs Hydrated 4EIY)
   - Scaffold-hop degradation (Stratified Random CV vs Murcko Scaffold Group CV)
-  - Docking score / similarity vs experimental `pKi` correlation (`score != affinity`)
+  - Docking score / similarity vs experimental `pKi` correlation across 60 measured binders
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ import contextlib
 import subprocess
 import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import gemmi
@@ -44,6 +47,7 @@ from adora2a_audit.metrics import (
     enrichment_curve,
     evaluate_screening,
 )
+from adora2a_audit.structures import PocketWater
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -52,16 +56,32 @@ STD_AA = {
     "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
 }
 
+DEFAULT_REDOCK_SEEDS = (101, 202, 303, 404, 505, 606, 707, 808, 909, 1010)
+
 
 @dataclass(frozen=True)
-class RedockingAudit:
-    """Cognate redocking validation summary for 4EIY + ZM241385."""
+class MultiSeedRedockingAudit:
+    """10-seed cognate redocking validation summary for ZM241385 on a receptor arm."""
 
-    top_pose_kcal: float
-    native_like_pose_rank: int
-    native_like_pose_kcal: float
-    delta_kcal: float
-    furan_oxygen_distance_angstrom: float
+    receptor_arm: str
+    n_seeds: int
+    pose1_rmsd_mean: float
+    pose1_rmsd_std: float
+    best_rmsd_mean: float
+    best_rmsd_std: float
+    pose1_lt_2a_count: int
+    any_pose_lt_2a_count: int
+    pose1_kcal_mean: float
+    pose1_kcal_std: float
+    delta_e_native_minus_nonnative_mean: float | None
+    delta_e_native_minus_nonnative_std: float | None
+    n_seeds_with_both_states: int
+    per_seed_pose1_rmsd: tuple[float, ...]
+    per_seed_best_rmsd: tuple[float, ...]
+    per_seed_delta_e: tuple[float, ...]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 def prepare_4eiy_receptor_and_reference_ligand(
@@ -69,8 +89,9 @@ def prepare_4eiy_receptor_and_reference_ligand(
     out_dir: str | Path,
     zma_smiles: str = "Oc1ccc(cc1)CCNc1nc(N)n2c(n1)nc(n2)c1ccco1",
 ) -> tuple[Path, Chem.Mol, tuple[float, float, float]]:
-    """Prepare pH 7.4 7TM receptor PDBQT from 4EIY (excluding ICL3-BRIL, waters, lipids)
-    and extract the 3D crystallographic ZMA conformer with chemical bond orders.
+    """Prepare pH 7.4 dry 7TM receptor PDBQT from 4EIY via custom RDKit/gemmi writer
+    with Gasteiger charges (note: Vina's scoring function ignores partial charges and uses
+    AutoDock atom types + HD donor connectivity) and extract 3D crystallographic ZMA.
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -178,16 +199,154 @@ def prepare_4eiy_receptor_and_reference_ligand(
     return rec_pdbqt, zma_3d_h, center
 
 
-def audit_cognate_redocking(
+def prepare_4eiy_hydrated_receptor(
+    dry_receptor_pdbqt: str | Path,
+    retained_waters: list[PocketWater],
+    out_dir: str | Path,
+) -> Path:
+    """Create `4eiy_7tm_ph74_hydrated.pdbqt` by appending retained crystallographic waters.
+
+    Uses the exact same protein PDBQT lines as `dry_receptor_pdbqt` and appends each
+    retained water oxygen (`OA`) with two covalent `HD` atoms (`0.957 A` O-H bond length)
+    so AutoDock Vina's internal C++ receptor parser promotes the water oxygen from
+    acceptor-only (`XS_TYPE_O_A`) to donor-acceptor (`XS_TYPE_O_DA`).
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    lines = Path(dry_receptor_pdbqt).read_text(encoding="utf-8").splitlines()
+    serial = len(lines) + 1
+
+    for w in retained_waters:
+        if not w.retained:
+            continue
+        wx, wy, wz = w.xyz
+        lines.append(
+            f"HETATM{serial:5d}  O   HOH {w.chain_id:1s}{w.seqid:4d}    "
+            f"{wx:8.3f}{wy:8.3f}{wz:8.3f}  1.00{w.b_factor:6.2f}    -0.834 OA"
+        )
+        serial += 1
+        lines.append(
+            f"HETATM{serial:5d}  H1  HOH {w.chain_id:1s}{w.seqid:4d}    "
+            f"{wx + 0.957:8.3f}{wy:8.3f}{wz:8.3f}  1.00  0.00    +0.417 HD"
+        )
+        serial += 1
+        lines.append(
+            f"HETATM{serial:5d}  H2  HOH {w.chain_id:1s}{w.seqid:4d}    "
+            f"{wx - 0.240:8.3f}{wy + 0.927:8.3f}{wz:8.3f}  1.00  0.00    +0.417 HD"
+        )
+        serial += 1
+
+    hyd_path = out / "4eiy_7tm_ph74_hydrated.pdbqt"
+    hyd_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return hyd_path
+
+
+def _build_crystal_heavy_graph(pdb_path: str | Path, resname: str = "ZMA") -> tuple[Chem.Mol, np.ndarray]:
+    """Build element-typed single-bond topological graph + heavy-atom coordinate array from PDB."""
+    st = gemmi.read_structure(str(pdb_path))
+    lig_res = next(r for r in st[0]["A"] if r.name == resname)
+    rw = Chem.RWMol()
+    coords: list[list[float]] = []
+    for atom in lig_res:
+        if atom.element.name != "H":
+            rd_atom = Chem.Atom(atom.element.name)
+            rd_atom.SetNoImplicit(True)
+            rw.AddAtom(rd_atom)
+            coords.append([atom.pos.x, atom.pos.y, atom.pos.z])
+    c_arr = np.asarray(coords, dtype=float)
+    for i in range(len(c_arr)):
+        for j in range(i + 1, len(c_arr)):
+            if float(np.linalg.norm(c_arr[i] - c_arr[j])) < 1.75:
+                rw.AddBond(i, j, Chem.BondType.SINGLE)
+    return rw.GetMol(), c_arr
+
+
+def compute_inplace_symmetry_rmsd(
+    dock_mol_no_h: Chem.Mol,
+    conf_id: int,
+    cryst_graph: Chem.Mol,
+    cryst_coords: np.ndarray,
+) -> float:
+    """Compute exact in-place symmetry-corrected heavy-atom RMSD (without rigid-body alignment)."""
+    dm = Chem.RWMol(dock_mol_no_h)
+    for bond in dm.GetBonds():
+        bond.SetBondType(Chem.BondType.SINGLE)
+        bond.SetIsAromatic(False)
+    for atom in dm.GetAtoms():
+        atom.SetIsAromatic(False)
+
+    matches = cryst_graph.GetSubstructMatches(dm.GetMol(), uniquify=False)
+    if not matches:
+        raise RuntimeError("Graph isomorphism failed between docked pose and crystal reference.")
+    d_pos = dock_mol_no_h.GetConformer(conf_id).GetPositions()
+    return min(
+        float(np.sqrt(((cryst_coords[list(m)] - d_pos) ** 2).sum(axis=1).mean()))
+        for m in matches
+    )
+
+
+def _redock_seed_worker(
+    args: tuple[int, str, str, str, tuple[float, float, float], bytes, np.ndarray],
+) -> tuple[int, float, float, float, float | None]:
+    """Run one cognate ZMA redocking seed and return (seed, pose1_rmsd, best_rmsd, pose1_kcal, delta_e)."""
+    seed, vina_exe, rec_pdbqt, lig_pdbqt_str, center, cryst_pkl, cryst_coords = args
+    RDLogger.DisableLog("rdApp.*")
+    cryst_graph = Chem.Mol(cryst_pkl)
+
+    with tempfile.TemporaryDirectory() as tmpd:
+        lig_in = Path(tmpd) / "zma_in.pdbqt"
+        lig_out = Path(tmpd) / "zma_out.pdbqt"
+        lig_in.write_text(lig_pdbqt_str, encoding="utf-8")
+        res = subprocess.run(
+            [
+                vina_exe,
+                "--receptor", rec_pdbqt,
+                "--ligand", str(lig_in),
+                "--center_x", f"{center[0]:.3f}",
+                "--center_y", f"{center[1]:.3f}",
+                "--center_z", f"{center[2]:.3f}",
+                "--size_x", "20.0",
+                "--size_y", "20.0",
+                "--size_z", "20.0",
+                "--exhaustiveness", "8",
+                "--cpu", "2",
+                "--num_modes", "9",
+                "--seed", str(seed),
+                "--out", str(lig_out),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        energies = [
+            float(line.split()[1])
+            for line in res.stdout.splitlines()
+            if len(line.split()) >= 2 and line.split()[0].isdigit()
+        ]
+        pmol = PDBQTMolecule.from_file(str(lig_out), skip_typing=True)
+        dmol = Chem.RemoveHs(RDKitMolCreate.from_pdbqt_mol(pmol)[0])
+        rmsds = [
+            compute_inplace_symmetry_rmsd(dmol, cid, cryst_graph, cryst_coords)
+            for cid in range(dmol.GetNumConformers())
+        ]
+
+    nat_es = [e for r, e in zip(rmsds, energies, strict=False) if r < 2.0]
+    non_es = [e for r, e in zip(rmsds, energies, strict=False) if r >= 2.0]
+    delta_e = (min(nat_es) - min(non_es)) if (nat_es and non_es) else None
+    return seed, rmsds[0], min(rmsds), energies[0], delta_e
+
+
+def audit_cognate_redocking_multiseed(
     vina_exe: str | Path,
     receptor_pdbqt: str | Path,
     center: tuple[float, float, float],
     pdb_path: str | Path,
-    out_dir: str | Path,
+    receptor_arm: str,
+    seeds: tuple[int, ...] = DEFAULT_REDOCK_SEEDS,
     zma_smiles: str = "Oc1ccc(cc1)CCNc1nc(N)n2c(n1)nc(n2)c1ccco1",
-) -> RedockingAudit:
-    """Redock ZM241385 from ab initio 3D SMILES embedding into dehydrated 4EIY."""
-    out = Path(out_dir)
+    max_workers: int = 5,
+) -> MultiSeedRedockingAudit:
+    """Evaluate cognate ZM241385 redocking across 10 independent random seeds."""
     mol = Chem.AddHs(Chem.MolFromSmiles(zma_smiles))
     params = AllChem.ETKDGv3()
     params.randomSeed = 42
@@ -195,84 +354,40 @@ def audit_cognate_redocking(
     AllChem.MMFFOptimizeMolecule(mol)
 
     prep = MoleculePreparation()
-    pdbqt_str, _, _ = PDBQTWriterLegacy.write_string(prep.prepare(mol)[0])
-    lig_in = out / "cognate_zma_in.pdbqt"
-    lig_out = out / "cognate_zma_out.pdbqt"
-    lig_in.write_text(pdbqt_str, encoding="utf-8")
+    lig_pdbqt_str, _, _ = PDBQTWriterLegacy.write_string(prep.prepare(mol)[0])
+    cryst_graph, cryst_coords = _build_crystal_heavy_graph(pdb_path, resname="ZMA")
+    cryst_pkl = cryst_graph.ToBinary()
 
-    res = subprocess.run(
-        [
-            str(vina_exe),
-            "--receptor", str(receptor_pdbqt),
-            "--ligand", str(lig_in),
-            "--center_x", f"{center[0]:.3f}",
-            "--center_y", f"{center[1]:.3f}",
-            "--center_z", f"{center[2]:.3f}",
-            "--size_x", "20.0",
-            "--size_y", "20.0",
-            "--size_z", "20.0",
-            "--exhaustiveness", "8",
-            "--cpu", "4",
-            "--seed", "42",
-            "--out", str(lig_out),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    tasks = [
+        (s, str(vina_exe), str(receptor_pdbqt), lig_pdbqt_str, center, cryst_pkl, cryst_coords)
+        for s in seeds
+    ]
+    with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        rows = list(pool.map(_redock_seed_worker, tasks))
 
-    mode_energies: list[float] = []
-    for line in res.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 2 and parts[0].isdigit():
-            mode_energies.append(float(parts[1]))
+    rows.sort(key=lambda x: x[0])
+    p1_rmsds = [r[1] for r in rows]
+    best_rmsds = [r[2] for r in rows]
+    p1_kcals = [r[3] for r in rows]
+    del_es = [r[4] for r in rows if r[4] is not None]
 
-    # Extract crystallographic furan O25 and phenol O4 coordinates
-    st = gemmi.read_structure(str(pdb_path))
-    cryst_o25 = None
-    cryst_o4 = None
-    for r in st[0]["A"]:
-        if r.name == "ZMA":
-            for a in r:
-                if a.name.strip() == "O25":
-                    cryst_o25 = np.array([a.pos.x, a.pos.y, a.pos.z])
-                elif a.name.strip() == "O4":
-                    cryst_o4 = np.array([a.pos.x, a.pos.y, a.pos.z])
-
-    pmol = PDBQTMolecule.from_file(str(lig_out), skip_typing=True)
-    dock_mol = Chem.RemoveHs(RDKitMolCreate.from_pdbqt_mol(pmol)[0])
-    # Identify aromatic furan O vs phenolic OH in docked molecule
-    furan_o_idx = next(
-        a.GetIdx() for a in dock_mol.GetAtoms() if a.GetAtomicNum() == 8 and a.GetIsAromatic()
-    )
-    phenol_o_idx = next(
-        a.GetIdx() for a in dock_mol.GetAtoms() if a.GetAtomicNum() == 8 and not a.GetIsAromatic()
-    )
-
-    best_rank = 1
-    best_furan_d = 999.0
-    for cid in range(dock_mol.GetNumConformers()):
-        c = dock_mol.GetConformer(cid)
-        pf = np.array(list(c.GetAtomPosition(furan_o_idx)))
-        pp = np.array(list(c.GetAtomPosition(phenol_o_idx)))
-        df = float(np.linalg.norm(pf - cryst_o25))
-        dp = float(np.linalg.norm(pp - cryst_o4))
-        if df < 2.5 and dp < 3.5:
-            best_rank = cid + 1
-            best_furan_d = df
-            break
-        if df < best_furan_d:
-            best_rank = cid + 1
-            best_furan_d = df
-
-    top_e = mode_energies[0]
-    nat_e = mode_energies[best_rank - 1]
-    return RedockingAudit(
-        top_pose_kcal=top_e,
-        native_like_pose_rank=best_rank,
-        native_like_pose_kcal=nat_e,
-        delta_kcal=round(abs(nat_e - top_e), 3),
-        furan_oxygen_distance_angstrom=round(best_furan_d, 2),
+    return MultiSeedRedockingAudit(
+        receptor_arm=receptor_arm,
+        n_seeds=len(seeds),
+        pose1_rmsd_mean=round(float(np.mean(p1_rmsds)), 3),
+        pose1_rmsd_std=round(float(np.std(p1_rmsds)), 3),
+        best_rmsd_mean=round(float(np.mean(best_rmsds)), 3),
+        best_rmsd_std=round(float(np.std(best_rmsds)), 3),
+        pose1_lt_2a_count=sum(r < 2.0 for r in p1_rmsds),
+        any_pose_lt_2a_count=sum(r < 2.0 for r in best_rmsds),
+        pose1_kcal_mean=round(float(np.mean(p1_kcals)), 3),
+        pose1_kcal_std=round(float(np.std(p1_kcals)), 3),
+        delta_e_native_minus_nonnative_mean=round(float(np.mean(del_es)), 3) if del_es else None,
+        delta_e_native_minus_nonnative_std=round(float(np.std(del_es)), 3) if del_es else None,
+        n_seeds_with_both_states=len(del_es),
+        per_seed_pose1_rmsd=tuple(round(x, 2) for x in p1_rmsds),
+        per_seed_best_rmsd=tuple(round(x, 2) for x in best_rmsds),
+        per_seed_delta_e=tuple(round(x, 3) for x in del_es),
     )
 
 
@@ -306,7 +421,6 @@ def evaluate_2d_scaffold_vs_random_split(
     yt = np.asarray(y_true, dtype=int)
     groups = np.asarray(murcko_list)
 
-    # 1. Stratified Random 5-fold CV (optimistic when congeneric analogues exist)
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
     oof_rand = np.zeros(len(yt), dtype=float)
     for tr, te in skf.split(x_mat, yt):
@@ -314,7 +428,6 @@ def evaluate_2d_scaffold_vs_random_split(
         clf.fit(x_mat[tr], yt[tr])
         oof_rand[te] = clf.predict_proba(x_mat[te])[:, 1]
 
-    # 2. Stratified Murcko Scaffold 5-fold Group CV (honest new-series generalization)
     sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
     oof_scaf = np.zeros(len(yt), dtype=float)
     for tr, te in sgkf.split(x_mat, yt, groups):
@@ -370,7 +483,6 @@ def _shape_worker(args: tuple[int, str, bytes]) -> tuple[int, float, float]:
             shape_sim = 1.0 - float(shape_dist)
             best_shape = max(best_shape, shape_sim)
 
-    # Combined 3D ligand score (equal blend of 3D steric Shape Tanimoto + pharmacophoric USRCAT)
     return idx, best_usr, 0.5 * best_usr + 0.5 * best_shape
 
 
@@ -425,7 +537,7 @@ def _vina_batch_worker(
     args: tuple[int, list[tuple[int, str]], str, str, tuple[float, float, float], int, int],
 ) -> list[tuple[int, float]]:
     """Run AutoDock Vina `--batch` on a chunk of ligands so the receptor grid is computed once."""
-    _chunk_id, items, vina_exe, rec_pdbqt, center, exhaustiveness, cpus = args
+    _, items, vina_exe, rec_pdbqt, center, exhaustiveness, cpus = args
     results: list[tuple[int, float]] = []
     if not items:
         return results
@@ -490,6 +602,7 @@ def score_autodock_vina(
     exhaustiveness: int = 4,
     workers: int = 8,
     cpus_per_worker: int = 2,
+    tag: str = "4EIY",
 ) -> np.ndarray:
     """Prepare 3D PDBQTs in parallel and dock via AutoDock Vina `--batch` chunks."""
     n = len(smiles_list)
@@ -498,7 +611,6 @@ def score_autodock_vina(
         for idx, pstr in pool.map(_prep_pdbqt_worker, enumerate(smiles_list), chunksize=25):
             pdbqt_list[idx] = pstr
 
-    # Split into ~25-ligand chunks across `workers` parallel Vina batch processes
     n_chunks = min(max(n // 25, 1), n)
     indexed_items = list(enumerate(pdbqt_list))
     chunks = [indexed_items[i::n_chunks] for i in range(n_chunks)]
@@ -516,19 +628,23 @@ def score_autodock_vina(
             for idx, val in batch_res:
                 kcal[idx] = val
             done += len(batch_res)
-            print(f"  [AutoDock Vina --batch] docked {done} / {n} molecules", flush=True)
+            print(f"  [AutoDock Vina --batch · {tag}] docked {done} / {n} molecules", flush=True)
     return kcal
 
 
 def analyze_affinity_correlation(actives_scored_df: pd.DataFrame) -> dict[str, dict[str, float]]:
     """Quantify correlation between virtual screening scores and experimental pKi on actives."""
     pki = actives_scored_df["pki_median"].to_numpy(dtype=float)
-    out: dict[str, dict[str, float]] = {}
-    for col, label in [
-        ("vina_neg_kcal", "AutoDock Vina (-ΔG, kcal/mol)"),
+    candidates = [
+        ("vina_neg_kcal", "AutoDock Vina · 4EIY dry (-ΔG, kcal/mol)"),
+        ("vina_hyd_neg_kcal", "AutoDock Vina · 4EIY hydrated (-ΔG, kcal/mol)"),
         ("score_2d_zma", "2D ECFP4 Tanimoto (vs ZM241385)"),
         ("score_3d_shape", "3D Shape + USRCAT (vs ZM241385)"),
-    ]:
+    ]
+    out: dict[str, dict[str, float]] = {}
+    for col, label in candidates:
+        if col not in actives_scored_df.columns:
+            continue
         vals = actives_scored_df[col].to_numpy(dtype=float)
         r, p_r = pearsonr(vals, pki)
         rho, p_rho = spearmanr(vals, pki)
@@ -555,39 +671,45 @@ def plot_roc_and_early_enrichment(
         "1D Physicochemical (Control)": "#7f7f7f",
         "2D ECFP4 (vs ZM241385)": "#1f77b4",
         "3D Shape + USRCAT (vs ZMA)": "#ff7f0e",
-        "3D Docking (AutoDock Vina · 4EIY)": "#2ca02c",
+        "3D Docking (Vina · 4EIY dry)": "#2ca02c",
+        "3D Docking (Vina · 4EIY hydrated)": "#0d9488",
+    }
+    linestyles = {
+        "3D Docking (Vina · 4EIY dry)": "--",
+        "3D Docking (Vina · 4EIY hydrated)": "-",
     }
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.2, 5.3), dpi=180)
-    ax1.plot([0, 1], [0, 1], "--", color="#bbbbbb", lw=1.1, label="Random (AUC = 0.50)")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.5, 5.4), dpi=180)
+    ax1.plot([0, 1], [0, 1], ":", color="#bbbbbb", lw=1.1, label="Random (AUC = 0.50)")
 
     for name, scores in method_scores.items():
         m = evaluate_screening(y_true, scores, method=name)
         fpr, tpr = compute_roc_curve(y_true, scores)
         fx, fy = enrichment_curve(y_true, scores)
         col = colors.get(name, "#333333")
+        ls = linestyles.get(name, "-")
 
-        ax1.plot(fpr, tpr, lw=2.1, color=col, label=f"{name} (AUC = {m.roc_auc:.2f})")
+        ax1.plot(fpr, tpr, lw=2.1, linestyle=ls, color=col, label=f"{name} (AUC = {m.roc_auc:.2f})")
         ax2.plot(
             fx[1:] * 100.0,
             fy[1:] * 100.0,
             lw=2.1,
+            linestyle=ls,
             color=col,
             label=f"{name} (EF1% = {m.ef1:.1f}x, BEDROC = {m.bedroc_20:.2f})",
         )
 
-    # Random expectation on log-x plot
     x_grid = np.logspace(-1, 2, 200)
-    ax2.plot(x_grid, x_grid, "--", color="#bbbbbb", lw=1.1, label="Random (EF = 1.0x)")
+    ax2.plot(x_grid, x_grid, ":", color="#bbbbbb", lw=1.1, label="Random (EF = 1.0x)")
     ax2.axvline(1.0, color="#d62728", linestyle=":", lw=1.0, alpha=0.75)
     ax2.axvline(5.0, color="#9467bd", linestyle=":", lw=1.0, alpha=0.75)
-    ax2.text(1.08, 88, "Top 1%\n(EF1%)", fontsize=8, color="#d62728", fontweight="bold")
-    ax2.text(5.4, 88, "Top 5%\n(EF5%)", fontsize=8, color="#9467bd", fontweight="bold")
+    ax2.text(1.06, 54, "Top 1%\n(EF1%)", fontsize=8, color="#d62728", fontweight="bold")
+    ax2.text(5.3, 54, "Top 5%\n(EF5%)", fontsize=8, color="#9467bd", fontweight="bold")
 
     ax1.set_xlabel("False Positive Rate (FPR)", fontsize=10)
     ax1.set_ylabel("True Positive Rate (TPR)", fontsize=10)
     ax1.set_title("A. Global ROC Curves (Classical ML View)", fontsize=10.5, fontweight="bold")
-    ax1.legend(loc="lower right", fontsize=8)
+    ax1.legend(loc="lower right", fontsize=7.6)
     ax1.grid(True, alpha=0.22)
 
     ax2.set_xscale("log")
@@ -595,8 +717,8 @@ def plot_roc_and_early_enrichment(
     ax2.set_ylim(0, 103)
     ax2.set_xlabel("% of Library Screened (log scale)", fontsize=10)
     ax2.set_ylabel("% of Actives Recovered", fontsize=10)
-    ax2.set_title("B. Early Enrichment (What Actually Matters in Wet-Lab Assays)", fontsize=10.5, fontweight="bold")
-    ax2.legend(loc="lower right", fontsize=7.8)
+    ax2.set_title("B. Early Enrichment (Top 1% / Top 5% Recovery)", fontsize=10.5, fontweight="bold")
+    ax2.legend(loc="upper left", fontsize=7.4, framealpha=0.92)
     ax2.grid(True, which="both", alpha=0.22)
 
     fig.tight_layout()
@@ -616,8 +738,8 @@ def plot_metrics_contrast(
     names = [m.method for m in metrics_list]
     y_pos = np.arange(len(names))
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.5, 5.2), dpi=180)
-    h = 0.25
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.8, 5.6), dpi=180)
+    h = 0.20
 
     acc_vals = [m.accuracy_top1pct for m in metrics_list]
     auc_vals = [m.roc_auc for m in metrics_list]
@@ -631,13 +753,19 @@ def plot_metrics_contrast(
 
     naive_acc = metrics_list[0].naive_all_inactive_accuracy
     ax1.axvline(naive_acc, color="#64748b", linestyle="--", lw=1.0)
-    ax1.text(naive_acc - 0.30, len(names) - 0.45, f"Predict all inactive = {naive_acc*100:.1f}% acc!", fontsize=7.8, color="#475569")
+    ax1.text(
+        naive_acc - 0.34,
+        len(names) - 0.62,
+        f"Predict all inactive = {naive_acc * 100:.1f}% acc",
+        fontsize=7.5,
+        color="#475569",
+    )
     ax1.set_yticks(y_pos)
-    ax1.set_yticklabels(names, fontsize=8.3)
+    ax1.set_yticklabels(names, fontsize=8.2)
     ax1.set_xlim(0, 1.08)
     ax1.set_xlabel("Metric Value [0 – 1]", fontsize=10)
     ax1.set_title("A. Why Accuracy (~97.5%) and ROC-AUC Hide Early Failures", fontsize=10.2, fontweight="bold")
-    ax1.legend(loc="lower right", fontsize=7.8)
+    ax1.legend(loc="lower right", fontsize=7.6)
     ax1.grid(True, axis="x", alpha=0.22)
 
     ef1_vals = [m.ef1 for m in metrics_list]
@@ -645,18 +773,39 @@ def plot_metrics_contrast(
     ef1_err_lo = [m.ef1 - ci_map[m.method]["ef1"][0] for m in metrics_list]
     ef1_err_hi = [ci_map[m.method]["ef1"][1] - m.ef1 for m in metrics_list]
 
-    ax2.barh(y_pos + 0.18, ef1_vals, xerr=[ef1_err_lo, ef1_err_hi], height=0.34, color="#ef4444", capsize=3, label="EF1% (95% bootstrap CI)")
-    ax2.barh(y_pos - 0.18, ef5_vals, height=0.34, color="#8b5cf6", label="EF5%")
+    ax2.barh(
+        y_pos + 0.17,
+        ef1_vals,
+        xerr=[ef1_err_lo, ef1_err_hi],
+        height=0.32,
+        color="#ef4444",
+        capsize=3,
+        label="EF1% (95% bootstrap CI)",
+    )
+    ax2.barh(y_pos - 0.17, ef5_vals, height=0.32, color="#8b5cf6", label="EF5%")
     ax2.axvline(1.0, color="#888888", linestyle="--", lw=1.0, label="Random (EF = 1.0x)")
 
-    for idx, (e1, e5, hi) in enumerate(zip(ef1_vals, ef5_vals, [ci_map[m.method]["ef1"][1] for m in metrics_list])):
-        ax2.text(max(hi, e5) + 0.8, idx + 0.16, f"EF1%={e1:.1f}x", fontsize=8, va="center", fontweight="bold", color="#b91c1c")
+    ci_uppers = [ci_map[m.method]["ef1"][1] for m in metrics_list]
+    for idx, (e1, e5, hi) in enumerate(zip(ef1_vals, ef5_vals, ci_uppers, strict=False)):
+        ax2.text(
+            max(hi, e5) + 0.8,
+            idx + 0.16,
+            f"EF1%={e1:.1f}x",
+            fontsize=8,
+            va="center",
+            fontweight="bold",
+            color="#b91c1c",
+        )
 
     ax2.set_yticks(y_pos)
     ax2.set_yticklabels([""] * len(names))
-    ax2.set_xlim(0, max(max(ci_map[m.method]["ef1"][1] for m in metrics_list) * 1.24, 14.0))
+    ax2.set_xlim(0, max(max(ci_uppers) * 1.24, 14.0))
     ax2.set_xlabel("Enrichment Factor (fold over random)", fontsize=10)
-    ax2.set_title(f"B. True Early Enrichment (Theoretical EF1% max = {metrics_list[0].ef1_max:.0f}x)", fontsize=10.2, fontweight="bold")
+    ax2.set_title(
+        f"B. Early Enrichment Comparison (Theoretical EF1% max = {metrics_list[0].ef1_max:.0f}x)",
+        fontsize=10.2,
+        fontweight="bold",
+    )
     ax2.legend(loc="lower right", fontsize=8)
     ax2.grid(True, axis="x", alpha=0.22)
 
@@ -670,129 +819,146 @@ def plot_affinity_vs_scores(
     corr_stats: dict[str, dict[str, float]],
     out_path: str | Path,
 ) -> None:
-    """Scatter of AutoDock Vina score and 2D similarity vs experimental pKi with annotated FP/FN."""
+    """3-panel scatter comparing Vina 4EIY dry, Vina 4EIY hydrated, and 2D ECFP4 vs experimental pKi."""
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     act = bench_df[bench_df["is_active"] == 1].copy()
     dec = bench_df[bench_df["is_active"] == 0].copy()
-
-    top5_vina_cut = float(np.percentile(bench_df["vina_neg_kcal"], 95.0))
-    top5_2d_cut = float(np.percentile(bench_df["score_2d_zma"], 95.0))
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.4, 5.4), dpi=180)
-
-    # Panel A: Vina (-kcal/mol) vs experimental pKi on actives + decoy distribution strip
-    # Exclude rare rigid-box steric clashes (ΔG > 0 kcal/mol, i.e. -ΔG < 0) from visual y-range
-    n_clashes = int((dec["vina_neg_kcal"] < 0.0).sum())
-    dec_plot = dec[dec["vina_neg_kcal"] >= 0.0].copy()
-
-    rng = np.random.default_rng(42)
-    dec_x_jitter = rng.normal(loc=4.35, scale=0.11, size=len(dec_plot))
-    ax1.scatter(
-        dec_x_jitter,
-        dec_plot["vina_neg_kcal"],
-        s=15,
-        alpha=0.22,
-        color="#94a3b8",
-        label=f"Matched decoys (n={len(dec_plot)}, +{n_clashes} steric clashes)",
-    )
-    ax1.scatter(act["pki_median"], act["vina_neg_kcal"], s=58, alpha=0.88, color="#16a34a", edgecolors="white", linewidths=0.6, label=f"Curated Ki actives (n={len(act)})")
-    ax1.axhline(top5_vina_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Top 5% Vina cutoff ({-top5_vina_cut:.2f} kcal/mol)")
-
-    # Stagger reference ligand labels cleanly
-    ref_offsets = {
-        "ZM241385": (6, 6),
-        "Istradefylline": (6, -10),
-        "Preladenant": (-58, 7),
-        "Vipadenant": (6, 5),
-        "Tozadenant": (-56, -11),
-        "Imaradenant": (6, -10),
-        "Caffeine": (6, 5),
-        "Theophylline": (6, -10),
-    }
     act["reference_name"] = act["reference_name"].fillna("").astype(str)
-    for _, r in act[act["reference_name"] != ""].iterrows():
-        rname = str(r["reference_name"])
-        ax1.annotate(
-            rname,
-            xy=(r["pki_median"], r["vina_neg_kcal"]),
-            xytext=ref_offsets.get(rname, (5, 4)),
-            textcoords="offset points",
-            fontsize=7.4,
+
+    fig, axes = plt.subplots(1, 3, figsize=(16.5, 5.2), dpi=180)
+    rng = np.random.default_rng(42)
+
+    ref_offsets = {
+        "ZM241385": (5, 5),
+        "Istradefylline": (5, -9),
+        "Preladenant": (-52, 6),
+        "Vipadenant": (5, 4),
+        "Tozadenant": (-50, -10),
+        "Imaradenant": (5, -9),
+        "Caffeine": (5, 4),
+        "Theophylline": (5, -9),
+    }
+
+    vina_panels = [
+        (axes[0], "vina_neg_kcal", "AutoDock Vina · 4EIY dry (-ΔG, kcal/mol)", "#16a34a", "A. Vina (4EIY dry) vs. pKi"),
+        (axes[1], "vina_hyd_neg_kcal", "AutoDock Vina · 4EIY hydrated (-ΔG, kcal/mol)", "#0d9488", "B. Vina (4EIY hydrated) vs. pKi"),
+    ]
+
+    for ax, col, stat_key, dot_col, title_prefix in vina_panels:
+        top5_cut = float(np.percentile(bench_df[col], 95.0))
+        n_clashes = int((dec[col] < 0.0).sum())
+        dec_plot = dec[dec[col] >= 0.0].copy()
+        act_plot = act[act[col] >= 0.0].copy()
+        act_clashes = int((act[col] < 0.0).sum())
+
+        dec_x = rng.normal(loc=4.35, scale=0.11, size=len(dec_plot))
+        clash_note = f"+{n_clashes} clashes" + (f", {act_clashes} active clash" if act_clashes else "")
+        ax.scatter(
+            dec_x,
+            dec_plot[col],
+            s=13,
+            alpha=0.22,
+            color="#94a3b8",
+            label=f"Matched decoys (n={len(dec_plot)}, {clash_note})",
+        )
+        ax.scatter(
+            act_plot["pki_median"],
+            act_plot[col],
+            s=52,
+            alpha=0.88,
+            color=dot_col,
+            edgecolors="white",
+            linewidths=0.6,
+            label=f"Curated Ki actives (n={len(act_plot)})",
+        )
+        ax.axhline(top5_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Top 5% cutoff ({-top5_cut:.2f} kcal/mol)")
+
+        for _, r in act_plot[act_plot["reference_name"] != ""].iterrows():
+            rname = str(r["reference_name"])
+            ax.annotate(
+                rname,
+                xy=(r["pki_median"], r[col]),
+                xytext=ref_offsets.get(rname, (5, 4)),
+                textcoords="offset points",
+                fontsize=7.0,
+                fontweight="bold",
+                color="#0f5132",
+            )
+
+        fn_cands = act_plot[act_plot[col] < top5_cut].sort_values("pki_median", ascending=False)
+        if not fn_cands.empty:
+            fn = fn_cands.iloc[0]
+            lbl = fn["reference_name"] if fn["reference_name"] else str(fn["primary_chembl_id"])
+            fn_offset = (-112, 16) if float(fn[col]) < 5.0 else (-98, -24)
+            ax.annotate(
+                f"FN: {lbl}\n(pKi={fn['pki_median']:.2f}, ΔG={-fn[col]:.1f})",
+                xy=(fn["pki_median"], fn[col]),
+                xytext=fn_offset,
+                textcoords="offset points",
+                fontsize=6.9,
+                color="#b91c1c",
+                bbox={"boxstyle": "round,pad=0.2", "fc": "#fef2f2", "ec": "#ef4444"},
+                arrowprops={"arrowstyle": "->", "color": "#ef4444", "lw": 0.85},
+            )
+
+        if not dec_plot.empty:
+            fp_dec = dec_plot.sort_values(col, ascending=False).iloc[0]
+            ax.annotate(
+                f"FP: {fp_dec['primary_chembl_id']}\n(ΔG={-fp_dec[col]:.1f} kcal/mol)",
+                xy=(4.35, fp_dec[col]),
+                xytext=(20, -6),
+                textcoords="offset points",
+                fontsize=6.9,
+                color="#7c2d12",
+                bbox={"boxstyle": "round,pad=0.2", "fc": "#fffbeb", "ec": "#f59e0b"},
+                arrowprops={"arrowstyle": "->", "color": "#f59e0b", "lw": 0.85},
+            )
+
+        st_v = corr_stats[stat_key]
+        y_hi = max(13.0, float(bench_df[col].max()) + 0.8)
+        ax.set_ylim(3.5, min(y_hi, 14.5))
+        ax.set_title(
+            f"{title_prefix}\n(r = {st_v['pearson_r']:+.2f}, R² = {st_v['pearson_r2']:.2f}, ρ = {st_v['spearman_rho']:+.2f})",
+            fontsize=9.4,
             fontweight="bold",
-            color="#0f5132",
         )
+        ax.set_xlabel("Experimental ChEMBL pKi", fontsize=9.0)
+        ax.set_ylabel("Predicted −ΔG (kcal/mol, higher = stronger)", fontsize=9.0)
+        ax.legend(loc="lower right", fontsize=7.0)
+        ax.grid(True, alpha=0.22)
 
-    fn_candidates = act[act["vina_neg_kcal"] < top5_vina_cut].sort_values("pki_median", ascending=False)
-    if not fn_candidates.empty:
-        fn = fn_candidates.iloc[0]
-        lbl = fn["reference_name"] if fn["reference_name"] else str(fn["primary_chembl_id"])
-        ax1.annotate(
-            f"FN: {lbl}\n(pKi={fn['pki_median']:.2f}, ΔG={-fn['vina_neg_kcal']:.1f})",
-            xy=(fn["pki_median"], fn["vina_neg_kcal"]),
-            xytext=(-105, -26),
-            textcoords="offset points",
-            fontsize=7.3,
-            color="#b91c1c",
-            bbox={"boxstyle": "round,pad=0.2", "fc": "#fef2f2", "ec": "#ef4444"},
-            arrowprops={"arrowstyle": "->", "color": "#ef4444", "lw": 0.9},
-        )
-
-    fp_decoy = dec_plot.sort_values("vina_neg_kcal", ascending=False).iloc[0]
-    ax1.annotate(
-        f"FP Decoy: {fp_decoy['primary_chembl_id']}\n(ΔG={-fp_decoy['vina_neg_kcal']:.1f} kcal/mol)",
-        xy=(4.35, fp_decoy["vina_neg_kcal"]),
-        xytext=(24, -4),
-        textcoords="offset points",
-        fontsize=7.3,
-        color="#7c2d12",
-        bbox={"boxstyle": "round,pad=0.2", "fc": "#fffbeb", "ec": "#f59e0b"},
-        arrowprops={"arrowstyle": "->", "color": "#f59e0b", "lw": 0.9},
-    )
-
-    st_v = corr_stats["AutoDock Vina (-ΔG, kcal/mol)"]
-    ax1.set_ylim(4.5, 13.0)
-    ax1.set_title(
-        f"A. AutoDock Vina Score vs. Experimental pKi\n"
-        f"(Actives: r = {st_v['pearson_r']:+.2f}, R² = {st_v['pearson_r2']:.2f}, ρ = {st_v['spearman_rho']:+.2f} → score ≠ affinity)",
-        fontsize=9.8,
-        fontweight="bold",
-    )
-    ax1.set_xlabel("Experimental ChEMBL pKi (decoys shown in left strip)", fontsize=9.5)
-    ax1.set_ylabel("Predicted Vina Affinity −ΔG (kcal/mol, higher = stronger)", fontsize=9.5)
-    ax1.legend(loc="lower right", fontsize=7.6)
-    ax1.grid(True, alpha=0.22)
-
-    # Panel B: 2D ECFP4 similarity to ZM241385 vs experimental pKi
+    # Panel C: 2D ECFP4 similarity to ZM241385 vs experimental pKi
+    ax3 = axes[2]
+    top5_2d_cut = float(np.percentile(bench_df["score_2d_zma"], 95.0))
     dec_x_all = rng.normal(loc=4.35, scale=0.11, size=len(dec))
-    ax2.scatter(dec_x_all, dec["score_2d_zma"], s=15, alpha=0.22, color="#94a3b8", label="Decoys (ECFP4 < 0.35 to all actives)")
-    ax2.scatter(act["pki_median"], act["score_2d_zma"], s=58, alpha=0.88, color="#2563eb", edgecolors="white", linewidths=0.6, label="Curated Ki actives")
-    ax2.axhline(top5_2d_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Top 5% ECFP4 cutoff ({top5_2d_cut:.2f})")
+    ax3.scatter(dec_x_all, dec["score_2d_zma"], s=13, alpha=0.22, color="#94a3b8", label="Decoys (ECFP4 < 0.35)")
+    ax3.scatter(act["pki_median"], act["score_2d_zma"], s=52, alpha=0.88, color="#2563eb", edgecolors="white", linewidths=0.6, label="Curated Ki actives")
+    ax3.axhline(top5_2d_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Top 5% cutoff ({top5_2d_cut:.2f})")
 
     for _, r in act[act["reference_name"] != ""].iterrows():
         rname = str(r["reference_name"])
-        ax2.annotate(
+        ax3.annotate(
             rname,
             xy=(r["pki_median"], r["score_2d_zma"]),
             xytext=ref_offsets.get(rname, (5, 4)),
             textcoords="offset points",
-            fontsize=7.4,
+            fontsize=7.0,
             fontweight="bold",
             color="#1e3a8a",
         )
 
     st_2d = corr_stats["2D ECFP4 Tanimoto (vs ZM241385)"]
-    ax2.set_title(
-        f"B. 2D ECFP4 Similarity (vs ZM241385) vs. Experimental pKi\n"
-        f"(Actives: r = {st_2d['pearson_r']:+.2f}, R² = {st_2d['pearson_r2']:.2f}, ρ = {st_2d['spearman_rho']:+.2f})",
-        fontsize=9.8,
+    ax3.set_title(
+        f"C. 2D ECFP4 (vs ZM241385) vs. pKi\n(r = {st_2d['pearson_r']:+.2f}, R² = {st_2d['pearson_r2']:.2f}, ρ = {st_2d['spearman_rho']:+.2f})",
+        fontsize=9.4,
         fontweight="bold",
     )
-    ax2.set_xlabel("Experimental ChEMBL pKi (decoys shown in left strip)", fontsize=9.5)
-    ax2.set_ylabel("ECFP4 Tanimoto Similarity to ZM241385", fontsize=9.5)
-    ax2.legend(loc="upper left", fontsize=7.8)
-    ax2.grid(True, alpha=0.22)
+    ax3.set_xlabel("Experimental ChEMBL pKi", fontsize=9.0)
+    ax3.set_ylabel("ECFP4 Tanimoto to ZM241385", fontsize=9.0)
+    ax3.legend(loc="upper left", fontsize=7.2)
+    ax3.grid(True, alpha=0.22)
 
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")

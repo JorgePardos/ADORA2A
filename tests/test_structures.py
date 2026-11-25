@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from adora2a_audit.structures import build_structure_audit_table, inspect_pocket_coordinates
+from adora2a_audit.structures import (
+    build_structure_audit_table,
+    inspect_pocket_coordinates,
+    inspect_pocket_waters,
+)
 
 CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "cache"
 
@@ -52,3 +56,26 @@ def test_pocket_coordinate_inspection_catches_star2_mutations_in_5iu4_vs_wt_4eiy
     # StaR2 mutates T88A and S277A directly inside the orthosteric pocket!
     assert p_5iu4.mutated_pocket_residues[88] == ("THR", "ALA")
     assert p_5iu4.mutated_pocket_residues[277] == ("SER", "ALA")
+
+
+@pytest.mark.skipif(
+    not (CACHE_DIR / "structures" / "pdb_00004eiy.pdb").exists(),
+    reason="Requires cached 4EIY PDB coordinate file",
+)
+def test_pocket_water_selection_retains_ordered_bridging_waters_and_excludes_high_bfactor():
+    waters = inspect_pocket_waters(CACHE_DIR / "structures" / "pdb_00004eiy.pdb")
+    retained = [w for w in waters if w.retained]
+    excluded = [w for w in waters if not w.retained]
+
+    retained_ids = {w.seqid for w in retained}
+    # Objective rule (d_ZMA <= 4.5 A, B < 30.0 A^2, occ == 1.0, H-bond anchored) selects exact 10 waters
+    assert retained_ids == {2517, 2518, 2521, 2524, 2525, 2527, 2531, 2541, 2583, 2585}
+    assert all(w.b_factor < 30.0 and w.min_ligand_dist <= 4.5 and w.occupancy >= 1.0 for w in retained)
+
+    # High-B-factor waters near ZMA (e.g. HOH 2668 B=42.88, HOH 2572 B=35.18, HOH 2505 B=47.59) are excluded
+    excluded_ids = {w.seqid for w in excluded}
+    assert {2505, 2572, 2584, 2668}.issubset(excluded_ids)
+    # Tightest structural waters HOH 2517 (Glu169/Asn253/Thr256) and HOH 2531 (His250/Asn253) are retained
+    w_2517 = next(w for w in retained if w.seqid == 2517)
+    assert any("GLU169.OE2" in hb for hb in w_2517.receptor_hbonds)
+    assert any("ASN253.OD1" in hb for hb in w_2517.receptor_hbonds)

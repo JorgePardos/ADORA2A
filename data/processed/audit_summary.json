@@ -29,6 +29,30 @@
     },
     "9EE8_wt": true
   },
+  "pocket_waters_audit": {
+    "n_within_5a": 15,
+    "n_retained": 10,
+    "retained_seqids": [
+      2517,
+      2518,
+      2521,
+      2524,
+      2525,
+      2527,
+      2531,
+      2541,
+      2583,
+      2585
+    ],
+    "excluded_seqids": [
+      2505,
+      2520,
+      2572,
+      2584,
+      2668
+    ],
+    "criterion": "min_dist_to_ZMA <= 4.5 A, B-factor < 30.0 A^2, occupancy == 1.0, >=1 H-bond <= 3.5 A"
+  },
   "curation_waterfall": {
     "01_raw_ki_ic50_records": 12105,
     "02_confidence_ge_8": 12105,
@@ -51,12 +75,108 @@
     "matched_rf_auc": 0.3464,
     "passed_go_nogo": true
   },
-  "cognate_redocking": {
-    "top_pose_kcal": -9.082,
-    "native_like_pose_rank": 3,
-    "native_like_pose_kcal": -8.927,
-    "delta_kcal": 0.155,
-    "furan_oxygen_distance_angstrom": 0.41
+  "cognate_redocking_10seeds": {
+    "dry": {
+      "receptor_arm": "4EIY_dry",
+      "n_seeds": 10,
+      "pose1_rmsd_mean": 9.684,
+      "pose1_rmsd_std": 0.019,
+      "best_rmsd_mean": 1.337,
+      "best_rmsd_std": 0.486,
+      "pose1_lt_2a_count": 0,
+      "any_pose_lt_2a_count": 9,
+      "pose1_kcal_mean": -9.113,
+      "pose1_kcal_std": 0.046,
+      "delta_e_native_minus_nonnative_mean": 0.188,
+      "delta_e_native_minus_nonnative_std": 0.084,
+      "n_seeds_with_both_states": 9,
+      "per_seed_pose1_rmsd": [
+        9.72,
+        9.69,
+        9.68,
+        9.69,
+        9.71,
+        9.65,
+        9.68,
+        9.67,
+        9.68,
+        9.67
+      ],
+      "per_seed_best_rmsd": [
+        1.1,
+        1.26,
+        1.1,
+        1.1,
+        1.1,
+        1.22,
+        2.76,
+        1.1,
+        1.44,
+        1.18
+      ],
+      "per_seed_delta_e": [
+        0.116,
+        0.334,
+        0.116,
+        0.096,
+        0.15,
+        0.296,
+        0.15,
+        0.277,
+        0.158
+      ]
+    },
+    "hydrated": {
+      "receptor_arm": "4EIY_hydrated",
+      "n_seeds": 10,
+      "pose1_rmsd_mean": 1.055,
+      "pose1_rmsd_std": 0.147,
+      "best_rmsd_mean": 1.055,
+      "best_rmsd_std": 0.147,
+      "pose1_lt_2a_count": 10,
+      "any_pose_lt_2a_count": 10,
+      "pose1_kcal_mean": -9.255,
+      "pose1_kcal_std": 0.034,
+      "delta_e_native_minus_nonnative_mean": -0.254,
+      "delta_e_native_minus_nonnative_std": 0.044,
+      "n_seeds_with_both_states": 10,
+      "per_seed_pose1_rmsd": [
+        0.99,
+        1.33,
+        0.97,
+        0.96,
+        1.0,
+        1.36,
+        0.97,
+        0.99,
+        0.98,
+        0.99
+      ],
+      "per_seed_best_rmsd": [
+        0.99,
+        1.33,
+        0.97,
+        0.96,
+        1.0,
+        1.36,
+        0.97,
+        0.99,
+        0.98,
+        0.99
+      ],
+      "per_seed_delta_e": [
+        -0.301,
+        -0.27,
+        -0.258,
+        -0.199,
+        -0.277,
+        -0.294,
+        -0.149,
+        -0.27,
+        -0.275,
+        -0.243
+      ]
+    }
   },
   "benchmark_metrics": [
     {
@@ -105,7 +225,7 @@
       "naive_all_inactive_accuracy": 0.975
     },
     {
-      "method": "3D Docking (AutoDock Vina \u00b7 4EIY)",
+      "method": "3D Docking (Vina \u00b7 4EIY dry)",
       "n_total": 1000,
       "n_actives": 25,
       "hit_rate": 0.025,
@@ -117,6 +237,21 @@
       "roc_auc": 0.5843897435897436,
       "pr_auc": 0.0328798388816957,
       "accuracy_top1pct": 0.965,
+      "naive_all_inactive_accuracy": 0.975
+    },
+    {
+      "method": "3D Docking (Vina \u00b7 4EIY hydrated)",
+      "n_total": 1000,
+      "n_actives": 25,
+      "hit_rate": 0.025,
+      "ef1": 4.0,
+      "ef1_max": 40.0,
+      "ef5": 1.5999999999999999,
+      "ef5_max": 20.0,
+      "bedroc_20": 0.12778610194457182,
+      "roc_auc": 0.5932717948717949,
+      "pr_auc": 0.04304647175393424,
+      "accuracy_top1pct": 0.967,
       "naive_all_inactive_accuracy": 0.975
     }
   ],
@@ -187,7 +322,7 @@
         0.3180232903611923
       ]
     },
-    "3D Docking (AutoDock Vina \u00b7 4EIY)": {
+    "3D Docking (Vina \u00b7 4EIY dry)": {
       "ef1": [
         0.0,
         0.0
@@ -208,6 +343,28 @@
         0.02485476241428057,
         0.052414885391468366
       ]
+    },
+    "3D Docking (Vina \u00b7 4EIY hydrated)": {
+      "ef1": [
+        0.0,
+        11.999999999999998
+      ],
+      "ef5": [
+        0.0,
+        4.0
+      ],
+      "bedroc_20": [
+        0.03689255913370175,
+        0.2399393878300411
+      ],
+      "roc_auc": [
+        0.4844374358974359,
+        0.7012779487179487
+      ],
+      "pr_auc": [
+        0.02871406499693336,
+        0.09342164629820765
+      ]
     }
   },
   "scaffold_hop_no_zma_analogues": {
@@ -227,8 +384,8 @@
       "accuracy_top1pct": 0.9789156626506024,
       "naive_all_inactive_accuracy": 0.9789156626506024
     },
-    "autodock_vina": {
-      "method": "AutoDock Vina (no ZMA analogues, ECFP4<0.35)",
+    "autodock_vina_dry": {
+      "method": "AutoDock Vina \u00b7 4EIY dry (no ZMA analogues)",
       "n_total": 996,
       "n_actives": 21,
       "hit_rate": 0.02108433734939759,
@@ -239,6 +396,21 @@
       "bedroc_20": 0.0715695341873314,
       "roc_auc": 0.6253724053724055,
       "pr_auc": 0.03187417618645286,
+      "accuracy_top1pct": 0.9688755020080321,
+      "naive_all_inactive_accuracy": 0.9789156626506024
+    },
+    "autodock_vina_hydrated": {
+      "method": "AutoDock Vina \u00b7 4EIY hydrated (no ZMA analogues)",
+      "n_total": 996,
+      "n_actives": 21,
+      "hit_rate": 0.02108433734939759,
+      "ef1": 0.0,
+      "ef1_max": 47.42857142857143,
+      "ef5": 0.9485714285714286,
+      "ef5_max": 19.92,
+      "bedroc_20": 0.09688762579385116,
+      "roc_auc": 0.5714774114774115,
+      "pr_auc": 0.03173887208556031,
       "accuracy_top1pct": 0.9688755020080321,
       "naive_all_inactive_accuracy": 0.9789156626506024
     }
@@ -277,12 +449,19 @@
     }
   },
   "affinity_correlation_potent_n25": {
-    "AutoDock Vina (-\u0394G, kcal/mol)": {
+    "AutoDock Vina \u00b7 4EIY dry (-\u0394G, kcal/mol)": {
       "pearson_r": -0.188,
       "pearson_r2": 0.035,
       "pearson_p": 0.3689,
       "spearman_rho": -0.242,
       "spearman_p": 0.243
+    },
+    "AutoDock Vina \u00b7 4EIY hydrated (-\u0394G, kcal/mol)": {
+      "pearson_r": 0.185,
+      "pearson_r2": 0.034,
+      "pearson_p": 0.3769,
+      "spearman_rho": 0.024,
+      "spearman_p": 0.9083
     },
     "2D ECFP4 Tanimoto (vs ZM241385)": {
       "pearson_r": -0.007,
@@ -300,19 +479,26 @@
     }
   },
   "affinity_correlation_wide_n60": {
-    "AutoDock Vina (-\u0394G, kcal/mol)": {
+    "AutoDock Vina \u00b7 4EIY dry (-\u0394G, kcal/mol)": {
       "pearson_r": 0.161,
       "pearson_r2": 0.026,
       "pearson_p": 0.2186,
       "spearman_rho": 0.222,
       "spearman_p": 0.0888
     },
+    "AutoDock Vina \u00b7 4EIY hydrated (-\u0394G, kcal/mol)": {
+      "pearson_r": 0.12,
+      "pearson_r2": 0.014,
+      "pearson_p": 0.3617,
+      "spearman_rho": 0.154,
+      "spearman_p": 0.2413
+    },
     "2D ECFP4 Tanimoto (vs ZM241385)": {
       "pearson_r": 0.246,
       "pearson_r2": 0.06,
       "pearson_p": 0.0583,
-      "spearman_rho": 0.226,
-      "spearman_p": 0.0826
+      "spearman_rho": 0.227,
+      "spearman_p": 0.0812
     },
     "3D Shape + USRCAT (vs ZM241385)": {
       "pearson_r": 0.524,
@@ -322,5 +508,5 @@
       "spearman_p": 0.0
     }
   },
-  "runtime_seconds": 100.4
+  "runtime_seconds": 253.7
 }
