@@ -261,7 +261,7 @@ def plot_structure_audit(df: pd.DataFrame, out_path: str | Path) -> None:
     # Panel A: Resolution vs Publication Year by Conformational State & Allosteric Na+
     for state in ["Inactive", "Active", "Intermediate"]:
         sub = df[df["state"] == state]
-        for na_flag, label_suffix in [(True, "con Na+ alosterico"), (False, "sin Na+")]:
+        for na_flag, label_suffix in [(True, "with allosteric Na+"), (False, "no Na+")]:
             grp = sub[sub["has_allosteric_na"] == na_flag]
             if grp.empty:
                 continue
@@ -278,11 +278,11 @@ def plot_structure_audit(df: pd.DataFrame, out_path: str | Path) -> None:
             )
 
     highlights = {
-        "4EIY": ("4EIY (1.80 Å, WT-pocket\nElegida Inactiva)", (-52, -32), "#0b4f6c"),
+        "4EIY": ("4EIY (1.80 Å, WT-pocket\nSelected Inactive)", (-52, -32), "#0b4f6c"),
         "5NM4": ("5NM4 (1.70 Å, StaR2: T88A/S277A)", (10, -4), "#555555"),
         "5IU4": ("5IU4 (1.72 Å, StaR2: T88A/S277A)", (10, -24), "#555555"),
-        "9EE8": ("9EE8 (2.63 Å, Gs+ADN\nElegida Activa)", (-108, -24), "#9b1d20"),
-        "4UHR": ("4UHR (2.60 Å, GL31\nSin proteína G)", (-58, 18), "#8c564b"),
+        "9EE8": ("9EE8 (2.63 Å, Gs+ADN\nSelected Active)", (-108, -24), "#9b1d20"),
+        "4UHR": ("4UHR (2.60 Å, GL31\nNo G protein)", (-58, 18), "#8c564b"),
         "5G53": ("5G53 (3.40 Å, mini-Gs)", (-50, 16), "#9b1d20"),
     }
     for pid, (txt, offset, col) in highlights.items():
@@ -304,11 +304,11 @@ def plot_structure_audit(df: pd.DataFrame, out_path: str | Path) -> None:
             )
 
     ax1.axhline(2.5, color="#888888", linestyle="--", linewidth=0.9, alpha=0.7)
-    ax1.text(2008.3, 2.44, "Umbral alta resolución (2.5 Å)", fontsize=7.5, color="#555555")
+    ax1.text(2008.3, 2.44, "High-resolution cutoff (2.5 Å)", fontsize=7.5, color="#555555")
     ax1.invert_yaxis()
-    ax1.set_xlabel("Año de publicación en PDB", fontsize=10)
-    ax1.set_ylabel("Resolución experimental (Å, arriba = mejor)", fontsize=10)
-    ax1.set_title("A. Paisaje estructural de ADORA2A (n = 188 entradas PDB)", fontsize=10.5, fontweight="bold")
+    ax1.set_xlabel("PDB Release Year", fontsize=10)
+    ax1.set_ylabel("Experimental Resolution (Å, higher = better)", fontsize=10)
+    ax1.set_title("A. ADORA2A Structural Landscape (n = 188 PDB entries)", fontsize=10.5, fontweight="bold")
     ax1.legend(loc="lower left", fontsize=7.5, framealpha=0.92)
     ax1.grid(True, alpha=0.22)
 
@@ -335,8 +335,8 @@ def plot_structure_audit(df: pd.DataFrame, out_path: str | Path) -> None:
     ax2.set_yticks(y_pos)
     ax2.set_yticklabels(summary.index, fontsize=8.2)
     ax2.set_xlim(0, max(left) * 1.16)
-    ax2.set_xlabel("Número de estructuras PDB", fontsize=10)
-    ax2.set_title("B. Ingeniería del constructo vs. estado conformacional", fontsize=10.5, fontweight="bold")
+    ax2.set_xlabel("Number of PDB Structures", fontsize=10)
+    ax2.set_title("B. Construct Engineering vs. Conformational State", fontsize=10.5, fontweight="bold")
     ax2.legend(loc="lower right", fontsize=8)
     ax2.grid(True, axis="x", alpha=0.22)
 

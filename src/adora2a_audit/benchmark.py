@@ -552,14 +552,14 @@ def plot_roc_and_early_enrichment(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     colors = {
-        "1D Fisicoquímico (Control)": "#7f7f7f",
+        "1D Physicochemical (Control)": "#7f7f7f",
         "2D ECFP4 (vs ZM241385)": "#1f77b4",
-        "3D Forma + USRCAT (vs ZMA)": "#ff7f0e",
+        "3D Shape + USRCAT (vs ZMA)": "#ff7f0e",
         "3D Docking (AutoDock Vina · 4EIY)": "#2ca02c",
     }
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.2, 5.3), dpi=180)
-    ax1.plot([0, 1], [0, 1], "--", color="#bbbbbb", lw=1.1, label="Azar (AUC = 0.50)")
+    ax1.plot([0, 1], [0, 1], "--", color="#bbbbbb", lw=1.1, label="Random (AUC = 0.50)")
 
     for name, scores in method_scores.items():
         m = evaluate_screening(y_true, scores, method=name)
@@ -578,24 +578,24 @@ def plot_roc_and_early_enrichment(
 
     # Random expectation on log-x plot
     x_grid = np.logspace(-1, 2, 200)
-    ax2.plot(x_grid, x_grid, "--", color="#bbbbbb", lw=1.1, label="Azar (EF = 1.0x)")
+    ax2.plot(x_grid, x_grid, "--", color="#bbbbbb", lw=1.1, label="Random (EF = 1.0x)")
     ax2.axvline(1.0, color="#d62728", linestyle=":", lw=1.0, alpha=0.75)
     ax2.axvline(5.0, color="#9467bd", linestyle=":", lw=1.0, alpha=0.75)
     ax2.text(1.08, 88, "Top 1%\n(EF1%)", fontsize=8, color="#d62728", fontweight="bold")
     ax2.text(5.4, 88, "Top 5%\n(EF5%)", fontsize=8, color="#9467bd", fontweight="bold")
 
-    ax1.set_xlabel("Tasa de Falsos Positivos (FPR)", fontsize=10)
-    ax1.set_ylabel("Tasa de Verdaderos Positivos (TPR)", fontsize=10)
-    ax1.set_title("A. Curvas ROC globales (visión clásica ML)", fontsize=10.5, fontweight="bold")
+    ax1.set_xlabel("False Positive Rate (FPR)", fontsize=10)
+    ax1.set_ylabel("True Positive Rate (TPR)", fontsize=10)
+    ax1.set_title("A. Global ROC Curves (Classical ML View)", fontsize=10.5, fontweight="bold")
     ax1.legend(loc="lower right", fontsize=8)
     ax1.grid(True, alpha=0.22)
 
     ax2.set_xscale("log")
     ax2.set_xlim(0.15, 100.0)
     ax2.set_ylim(0, 103)
-    ax2.set_xlabel("% de quimioteca cribada (escala logarítmica)", fontsize=10)
-    ax2.set_ylabel("% de activos recuperados", fontsize=10)
-    ax2.set_title("B. Enriquecimiento temprano (lo que importa en laboratorio)", fontsize=10.5, fontweight="bold")
+    ax2.set_xlabel("% of Library Screened (log scale)", fontsize=10)
+    ax2.set_ylabel("% of Actives Recovered", fontsize=10)
+    ax2.set_title("B. Early Enrichment (What Actually Matters in Wet-Lab Assays)", fontsize=10.5, fontweight="bold")
     ax2.legend(loc="lower right", fontsize=7.8)
     ax2.grid(True, which="both", alpha=0.22)
 
@@ -624,19 +624,19 @@ def plot_metrics_contrast(
     bed_vals = [m.bedroc_20 for m in metrics_list]
     pr_vals = [m.pr_auc for m in metrics_list]
 
-    ax1.barh(y_pos + 1.5 * h, acc_vals, height=h, color="#cbd5e1", label="Accuracy @ Top 1% (engañosa)")
+    ax1.barh(y_pos + 1.5 * h, acc_vals, height=h, color="#cbd5e1", label="Accuracy @ Top 1% (misleading)")
     ax1.barh(y_pos + 0.5 * h, auc_vals, height=h, color="#60a5fa", label="ROC-AUC (global)")
-    ax1.barh(y_pos - 0.5 * h, bed_vals, height=h, color="#f59e0b", label="BEDROC (α=20, temprano)")
-    ax1.barh(y_pos - 1.5 * h, pr_vals, height=h, color="#10b981", label="PR-AUC (sensible al desbalance)")
+    ax1.barh(y_pos - 0.5 * h, bed_vals, height=h, color="#f59e0b", label="BEDROC (α=20, early)")
+    ax1.barh(y_pos - 1.5 * h, pr_vals, height=h, color="#10b981", label="PR-AUC (imbalance-aware)")
 
     naive_acc = metrics_list[0].naive_all_inactive_accuracy
     ax1.axvline(naive_acc, color="#64748b", linestyle="--", lw=1.0)
-    ax1.text(naive_acc - 0.27, len(names) - 0.45, f"Predecir todo inactivo = {naive_acc*100:.1f}% acc!", fontsize=7.8, color="#475569")
+    ax1.text(naive_acc - 0.30, len(names) - 0.45, f"Predict all inactive = {naive_acc*100:.1f}% acc!", fontsize=7.8, color="#475569")
     ax1.set_yticks(y_pos)
     ax1.set_yticklabels(names, fontsize=8.3)
     ax1.set_xlim(0, 1.08)
-    ax1.set_xlabel("Valor de la métrica [0 – 1]", fontsize=10)
-    ax1.set_title("A. Por qué Accuracy (~97.5%) y ROC-AUC ocultan fallos tempranos", fontsize=10.2, fontweight="bold")
+    ax1.set_xlabel("Metric Value [0 – 1]", fontsize=10)
+    ax1.set_title("A. Why Accuracy (~97.5%) and ROC-AUC Hide Early Failures", fontsize=10.2, fontweight="bold")
     ax1.legend(loc="lower right", fontsize=7.8)
     ax1.grid(True, axis="x", alpha=0.22)
 
@@ -645,9 +645,9 @@ def plot_metrics_contrast(
     ef1_err_lo = [m.ef1 - ci_map[m.method]["ef1"][0] for m in metrics_list]
     ef1_err_hi = [ci_map[m.method]["ef1"][1] - m.ef1 for m in metrics_list]
 
-    ax2.barh(y_pos + 0.18, ef1_vals, xerr=[ef1_err_lo, ef1_err_hi], height=0.34, color="#ef4444", capsize=3, label="EF1% (con IC 95% bootstrap)")
+    ax2.barh(y_pos + 0.18, ef1_vals, xerr=[ef1_err_lo, ef1_err_hi], height=0.34, color="#ef4444", capsize=3, label="EF1% (95% bootstrap CI)")
     ax2.barh(y_pos - 0.18, ef5_vals, height=0.34, color="#8b5cf6", label="EF5%")
-    ax2.axvline(1.0, color="#888888", linestyle="--", lw=1.0, label="Azar (EF = 1.0x)")
+    ax2.axvline(1.0, color="#888888", linestyle="--", lw=1.0, label="Random (EF = 1.0x)")
 
     for idx, (e1, e5, hi) in enumerate(zip(ef1_vals, ef5_vals, [ci_map[m.method]["ef1"][1] for m in metrics_list])):
         ax2.text(max(hi, e5) + 0.8, idx + 0.16, f"EF1%={e1:.1f}x", fontsize=8, va="center", fontweight="bold", color="#b91c1c")
@@ -655,8 +655,8 @@ def plot_metrics_contrast(
     ax2.set_yticks(y_pos)
     ax2.set_yticklabels([""] * len(names))
     ax2.set_xlim(0, max(max(ci_map[m.method]["ef1"][1] for m in metrics_list) * 1.24, 14.0))
-    ax2.set_xlabel("Factor de Enriquecimiento (veces sobre azar)", fontsize=10)
-    ax2.set_title(f"B. Enriquecimiento temprano real (EF1% máx teórico = {metrics_list[0].ef1_max:.0f}x)", fontsize=10.2, fontweight="bold")
+    ax2.set_xlabel("Enrichment Factor (fold over random)", fontsize=10)
+    ax2.set_title(f"B. True Early Enrichment (Theoretical EF1% max = {metrics_list[0].ef1_max:.0f}x)", fontsize=10.2, fontweight="bold")
     ax2.legend(loc="lower right", fontsize=8)
     ax2.grid(True, axis="x", alpha=0.22)
 
@@ -695,10 +695,10 @@ def plot_affinity_vs_scores(
         s=15,
         alpha=0.22,
         color="#94a3b8",
-        label=f"Decoys emparejados (n={len(dec_plot)}, +{n_clashes} choques estéricos)",
+        label=f"Matched decoys (n={len(dec_plot)}, +{n_clashes} steric clashes)",
     )
-    ax1.scatter(act["pki_median"], act["vina_neg_kcal"], s=58, alpha=0.88, color="#16a34a", edgecolors="white", linewidths=0.6, label=f"Activos curados Ki (n={len(act)})")
-    ax1.axhline(top5_vina_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Corte Top 5% Vina ({-top5_vina_cut:.2f} kcal/mol)")
+    ax1.scatter(act["pki_median"], act["vina_neg_kcal"], s=58, alpha=0.88, color="#16a34a", edgecolors="white", linewidths=0.6, label=f"Curated Ki actives (n={len(act)})")
+    ax1.axhline(top5_vina_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Top 5% Vina cutoff ({-top5_vina_cut:.2f} kcal/mol)")
 
     # Stagger reference ligand labels cleanly
     ref_offsets = {
@@ -754,21 +754,21 @@ def plot_affinity_vs_scores(
     st_v = corr_stats["AutoDock Vina (-ΔG, kcal/mol)"]
     ax1.set_ylim(4.5, 13.0)
     ax1.set_title(
-        f"A. Score AutoDock Vina vs. pKi experimental\n"
-        f"(Activos: r = {st_v['pearson_r']:+.2f}, R² = {st_v['pearson_r2']:.2f}, ρ = {st_v['spearman_rho']:+.2f} → score ≠ afinidad)",
+        f"A. AutoDock Vina Score vs. Experimental pKi\n"
+        f"(Actives: r = {st_v['pearson_r']:+.2f}, R² = {st_v['pearson_r2']:.2f}, ρ = {st_v['spearman_rho']:+.2f} → score ≠ affinity)",
         fontsize=9.8,
         fontweight="bold",
     )
-    ax1.set_xlabel("pKi experimental en ChEMBL (decoys en banda izquierda)", fontsize=9.5)
-    ax1.set_ylabel("Afinidad predicha Vina −ΔG (kcal/mol, arriba = mejor)", fontsize=9.5)
+    ax1.set_xlabel("Experimental ChEMBL pKi (decoys shown in left strip)", fontsize=9.5)
+    ax1.set_ylabel("Predicted Vina Affinity −ΔG (kcal/mol, higher = stronger)", fontsize=9.5)
     ax1.legend(loc="lower right", fontsize=7.6)
     ax1.grid(True, alpha=0.22)
 
     # Panel B: 2D ECFP4 similarity to ZM241385 vs experimental pKi
     dec_x_all = rng.normal(loc=4.35, scale=0.11, size=len(dec))
-    ax2.scatter(dec_x_all, dec["score_2d_zma"], s=15, alpha=0.22, color="#94a3b8", label="Decoys (ECFP4 < 0.35 respecto a activos)")
-    ax2.scatter(act["pki_median"], act["score_2d_zma"], s=58, alpha=0.88, color="#2563eb", edgecolors="white", linewidths=0.6, label="Activos curados Ki")
-    ax2.axhline(top5_2d_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Corte Top 5% ECFP4 ({top5_2d_cut:.2f})")
+    ax2.scatter(dec_x_all, dec["score_2d_zma"], s=15, alpha=0.22, color="#94a3b8", label="Decoys (ECFP4 < 0.35 to all actives)")
+    ax2.scatter(act["pki_median"], act["score_2d_zma"], s=58, alpha=0.88, color="#2563eb", edgecolors="white", linewidths=0.6, label="Curated Ki actives")
+    ax2.axhline(top5_2d_cut, color="#dc2626", linestyle="--", lw=1.0, label=f"Top 5% ECFP4 cutoff ({top5_2d_cut:.2f})")
 
     for _, r in act[act["reference_name"] != ""].iterrows():
         rname = str(r["reference_name"])
@@ -784,13 +784,13 @@ def plot_affinity_vs_scores(
 
     st_2d = corr_stats["2D ECFP4 Tanimoto (vs ZM241385)"]
     ax2.set_title(
-        f"B. Similitud 2D ECFP4 (vs ZM241385) vs. pKi experimental\n"
-        f"(Activos: r = {st_2d['pearson_r']:+.2f}, R² = {st_2d['pearson_r2']:.2f}, ρ = {st_2d['spearman_rho']:+.2f})",
+        f"B. 2D ECFP4 Similarity (vs ZM241385) vs. Experimental pKi\n"
+        f"(Actives: r = {st_2d['pearson_r']:+.2f}, R² = {st_2d['pearson_r2']:.2f}, ρ = {st_2d['spearman_rho']:+.2f})",
         fontsize=9.8,
         fontweight="bold",
     )
-    ax2.set_xlabel("pKi experimental en ChEMBL (decoys mostrados en banda izquierda)", fontsize=9.5)
-    ax2.set_ylabel("Tanimoto ECFP4 frente a ZM241385", fontsize=9.5)
+    ax2.set_xlabel("Experimental ChEMBL pKi (decoys shown in left strip)", fontsize=9.5)
+    ax2.set_ylabel("ECFP4 Tanimoto Similarity to ZM241385", fontsize=9.5)
     ax2.legend(loc="upper left", fontsize=7.8)
     ax2.grid(True, alpha=0.22)
 

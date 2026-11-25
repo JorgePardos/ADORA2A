@@ -60,7 +60,7 @@
   },
   "benchmark_metrics": [
     {
-      "method": "1D Fisicoqu\u00edmico (Control)",
+      "method": "1D Physicochemical (Control)",
       "n_total": 1000,
       "n_actives": 25,
       "hit_rate": 0.025,
@@ -90,7 +90,7 @@
       "naive_all_inactive_accuracy": 0.975
     },
     {
-      "method": "3D Forma + USRCAT (vs ZMA)",
+      "method": "3D Shape + USRCAT (vs ZMA)",
       "n_total": 1000,
       "n_actives": 25,
       "hit_rate": 0.025,
@@ -121,7 +121,7 @@
     }
   ],
   "benchmark_bootstrap_ci": {
-    "1D Fisicoqu\u00edmico (Control)": {
+    "1D Physicochemical (Control)": {
       "ef1": [
         0.0,
         0.0
@@ -165,7 +165,7 @@
         0.6306445957905645
       ]
     },
-    "3D Forma + USRCAT (vs ZMA)": {
+    "3D Shape + USRCAT (vs ZMA)": {
       "ef1": [
         0.0,
         20.0
@@ -213,7 +213,7 @@
   "scaffold_hop_no_zma_analogues": {
     "n_actives_remaining": 21,
     "2d_ecfp4": {
-      "method": "2D ECFP4 (sin an\u00e1logos ZMA, ECFP4<0.35)",
+      "method": "2D ECFP4 (no ZMA analogues, ECFP4<0.35)",
       "n_total": 996,
       "n_actives": 21,
       "hit_rate": 0.02108433734939759,
@@ -228,7 +228,7 @@
       "naive_all_inactive_accuracy": 0.9789156626506024
     },
     "autodock_vina": {
-      "method": "AutoDock Vina (sin an\u00e1logos ZMA, ECFP4<0.35)",
+      "method": "AutoDock Vina (no ZMA analogues, ECFP4<0.35)",
       "n_total": 996,
       "n_actives": 21,
       "hit_rate": 0.02108433734939759,
@@ -322,5 +322,5 @@
       "spearman_p": 0.0
     }
   },
-  "runtime_seconds": 236.8
+  "runtime_seconds": 100.4
 }

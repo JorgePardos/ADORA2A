@@ -1,50 +1,47 @@
-# Plan de trabajo · ADORA2A Retrospective Audit
+# Implementation Plan · ADORA2A Retrospective Audit
 
-Estudio de caso reproducible sobre el receptor de adenosina $A_{2A}$ humano (`ADORA2A`, UniProt `P29274`, ChEMBL `CHEMBL251`).
-Objetivo: demostrar en un repositorio limpio, rápido y verificable el criterio científico necesario para diseñar, auditar y evaluar una campaña retrospectiva de cribado virtual en GPCRs — y comunicarlo con claridad a un equipo de ingeniería de IA/datos.
-
----
-
-## Principios y criterios explícitos de éxito / fallo (*go / no-go*)
-
-- **Ningún dato sin procedencia:** toda actividad química conserva su `assay_chembl_id`, `standard_type`, `standard_relation` y `confidence_score`.
-- **No mezclar peras con manzanas:** separar estrictamente ensayos de unión ($K_i$) de $IC_{50}$ / ensayos funcionales, y distinguir agonistas de antagonistas.
-- **Control de sesgo del benchmark:** un modelo *dummy* basado solo en propiedades fisicoquímicas (MW, cLogP, TPSA, HBD, HBA, carga) debe dar un ROC-AUC cercano a 0,50 sobre el set de activos + decoys emparejados. Si supera ~0,60, el set de decoys está sesgado y se rehace.
-- **Métricas de cribado honestas:** evaluar siempre **EF1%**, **EF5%**, **BEDROC ($\alpha = 20$)**, **ROC-AUC** y **PR-AUC** — nunca *accuracy* como métrica principal.
-- **Criterio de fallo claro:** documentar explícitamente qué no funciona (p. ej. falta de correlación lineal entre score y $pK_i$, o pérdida de rendimiento al hacer split por andamio de Murcko).
+Reproducible case study on the human Adenosine $A_{2A}$ receptor (`ADORA2A`, UniProt `P29274`, ChEMBL `CHEMBL251`).  
+**Objective:** demonstrate in a clean, fast, and verifiable repository the scientific rigor required to design, audit, and evaluate a retrospective GPCR virtual screening campaign—and communicate those findings clearly to an AI / data engineering team.
 
 ---
 
-## Fases de implementación
+## Guiding Principles & Explicit *Go / No-Go* Criteria
 
-### Fase 1 · Auditoría de estructuras GPCR (`structures.py`)
-- [x] Consultar la API REST de **GPCRdb** (`/services/structure/protein/aa2ar_human/`) y metadatos de **RCSB PDB**.
-- [x] Clasificar estructuras por estado conformacional (`Active`, `Intermediate`, `Inactive`), resolución, método (X-ray / cryo-EM), ligando co-cristalizado (agonista vs. antagonista), proteínas de fusión (BRIL / T4L) y mutaciones termoestabilizantes.
-- [x] Generar tabla comparativa en `reports/structure_audit.md` + figura resumen (resolución vs. estado conformacional).
-- [x] **Decisión explícita:** elegir 1 estructura de referencia para antagonistas (inactiva) y 1 para agonistas (activa), justificando qué estructuras se descartan y por qué.
+- **No data without provenance:** every bioactivity record retains its `assay_chembl_id`, `standard_type`, `standard_relation`, and `confidence_score`.
+- **Never mix apples and oranges:** strictly separate equilibrium binding assays ($K_i$) from $IC_{50}$ / functional cellular readouts, and distinguish agonists from antagonists.
+- **Benchmark bias control:** a *dummy* classifier trained solely on 1D physicochemical properties (`MW`, `cLogP`, `TPSA`, `HBD`, `HBA`, `RotBonds`, `FormalCharge`) must yield a cross-validated `ROC-AUC` near `0.50` on the matched active + decoy benchmark. If it exceeds `~0.60`, the decoy set is biased and rejected.
+- **Honest screening metrics:** always report **EF1%**, **EF5%**, **BEDROC ($\alpha = 20$)**, **ROC-AUC**, and **PR-AUC**—never *accuracy* as a primary metric.
+- **Explicit failure reporting:** transparently document negative findings (e.g., lack of linear correlation between docking score and experimental $pK_i$, rigid-docking failure on dehydrated pockets, or performance degradation under Murcko scaffold splitting).
 
-### Fase 2 · Curación de bioactividad y set retrospectivo (`curation.py` + `decoys.py`)
-- [x] Descargar bioactividades de `CHEMBL251` desde la API de **ChEMBL** (con caché en disco en `data/cache/` para reproducibilidad offline).
-- [x] Filtrar por `confidence_score >= 8`, `standard_relation == '='`, unidad `nM`, y separar cohortes ($K_i$ vs. $IC_{50}$).
-- [x] Normalización química con RDKit: fragmento mayor (eliminación de sales), neutralización, deduplicación por `InChIKey` (calculando mediana de $pK_i$ y señalando discrepancias > 1 log unit entre ensayos).
-- [x] Anotar alertas estructurales (PAINS/BRENK) **con contexto**, verificando que fármacos/ligandos de referencia conocidos (p. ej. cafeína, istradefilina, ZM241385) no se descartan ciegamente.
-- [x] Generar **decoys emparejados en propiedades fisicoquímicas** (MW, cLogP, HBD, HBA, enlaces rotables, carga) y con baja similitud topológica (Tanimoto ECFP4 < 0,35 respecto a cualquier activo).
-- [x] Verificar con un clasificador fisicoquímico *dummy* (LogisticRegression / RandomForest solo con descriptores 1D) que el benchmark no tiene fuga trivial.
+---
 
-### Fase 3 · Benchmark retrospectivo y métricas honestas (`metrics.py` + `benchmark.py`)
-- [x] Implementar y testear (`tests/test_metrics.py`) las métricas: **EF1%**, **EF5%**, **BEDROC ($\alpha=20$)**, **ROC-AUC**, **PR-AUC** y *accuracy* (para contrastar por qué engaña a tasa de hits del 1–2 %, y por qué un ROC-AUC decente puede ser inútil si los activos no aparecen en el top temprano).
-- [x] Ejecutar comparativa reproducible de 4 niveles sobre el mismo set de activos + decoys emparejados:
-  1. **Control negativo (1D):** clasificador fisicoquímico (MW, LogP, TPSA, carga, HBD, HBA) para demostrar que el benchmark no tiene sesgo trivial.
-  2. **Baseline 2D:** similitud por huellas ECFP4 usando ligandos co-cristalizados como consulta (y evaluación con **Murcko scaffold split** para medir generalización a series nuevas).
-  3. **Método 3D barato (forma):** descriptores de forma 3D en RDKit (confórmeros ETKDG + USRCAT / Shape Tanimoto respecto al ligando co-cristalizado).
-  4. **Docking basado en estructura (AutoDock Vina):** preparar el receptor elegido en la Fase 1 (estructura inactiva de alta resolución con el bolsillo definido a partir del antagonista co-cristalizado) y puntuar el set retrospectivo. Si el baseline 2D supera al docking o a la forma 3D, **publicarlo tal cual** como resultado negativo claro.
-- [x] Analizar la correlación **score de docking / similitud vs. $pK_i$ experimental** en los activos (demostrando cuantitativamente que *score $\neq$ afinidad*).
-- [x] Generar figuras limpias en `reports/figures/`:
-  - Comparativa de curvas ROC / enriquecimiento temprano entre los 4 métodos (1D vs. 2D vs. 3D forma vs. Vina).
-  - Tabla/gráfica comparando *accuracy* y ROC-AUC frente a **EF1%** y **BEDROC**.
-  - Scatter score (Vina / 2D) vs. $pK_i$ experimental con falsos positivos/negativos anotados.
+## Implementation Phases
 
-### Fase 4 · Informe ejecutivo y cierre (`reports/executive_summary.md` + `README.md`)
-- [x] Redactar resumen ejecutivo de 1 página dirigido a ingenieros de IA/datos: pregunta terapéutica, criterios *go/no-go*, decisiones de curación, resultados honestos (incluyendo qué falló) y recomendaciones para un pipeline productivo.
-- [x] Completar `README.md` con las figuras embebidas y comandos exactos para reproducir todo el análisis.
-- [x] Verificar `pytest` y `ruff check .` en verde + commit limpio.
+### Phase 1 · GPCR Structural Audit (`structures.py`)
+- [x] Query the **GPCRdb** REST API (`/services/structure/protein/aa2ar_human/`) and **RCSB PDB** GraphQL metadata.
+- [x] Classify all 188 structures by conformational state (`Active`, `Intermediate`, `Inactive`), resolution, method (X-ray / cryo-EM), co-crystallized ligand modality (agonist vs. antagonist), fusion partners (`BRIL` / `T4L`), and thermostabilizing mutations (`StaR2`).
+- [x] Generate comparative audit report in `reports/structure_audit.md` + summary figure (resolution vs. conformational state & construct class).
+- [x] **Explicit decision:** select 1 reference structure for antagonists (inactive: `4EIY`) and 1 for agonists (active: `9EE8`), justifying every rejected structure.
+
+### Phase 2 · Bioactivity Curation & Retrospective Set (`curation.py` + `decoys.py`)
+- [x] Fetch `CHEMBL251` bioactivities from **ChEMBL** (with disk caching in `data/cache/` for offline reproducibility).
+- [x] Filter by `confidence_score >= 8`, `standard_relation == '='`, normalized `nM` units, and strictly separate cohorts ($K_i$ vs. $IC_{50}$).
+- [x] RDKit chemical standardization: largest organic fragment (salt stripping), neutralization, deduplication by `InChIKey` (computing median $pK_i$ and flagging $> 1.0$ log-unit inter-assay discrepancies).
+- [x] Contextual structural alert auditing (PAINS/Brenk), verifying that clinically validated drugs and reference probes (`Caffeine`, `Istradefylline`, `ZM241385`, `Tozadenant`, `Vipadenant`, `Imaradenant`) are not blindly discarded.
+- [x] Generate **7D property-matched decoys** (`MW`, `cLogP`, `TPSA`, `HBD`, `HBA`, `RotatableBonds`, `FormalCharge`) with low topological similarity (`ECFP4 Tanimoto < 0.35` to every active).
+- [x] Verify with 1D physicochemical classifiers (`LogisticRegression` and `RandomForest`) that the benchmark passes the `< 0.60` ROC-AUC *go/no-go* gate.
+
+### Phase 3 · Retrospective Benchmark & Honest Metrics (`metrics.py` + `benchmark.py`)
+- [x] Implement and unit-test (`tests/test_metrics.py`) **EF1%**, **EF5%**, **BEDROC ($\alpha=20$)**, **ROC-AUC**, **PR-AUC**, and *accuracy* (contrasting why accuracy misleads at a 2–3% hit rate, and why global ROC-AUC hides early-recognition failures).
+- [x] Run a reproducible 4-level comparison on the exact same 1,000-compound set:
+  1. **1D Negative Control:** physicochemical classifier (`MW`, `cLogP`, `TPSA`, `Charge`, `HBD`, `HBA`, `RotBonds`) proving absence of trivial benchmark bias.
+  2. **2D Baseline:** ECFP4 Tanimoto similarity against the co-crystallized antagonist `ZM241385` (plus non-analogue subset & **Murcko scaffold split** generalization audit).
+  3. **Fast 3D Shape Baseline:** RDKit 3D conformers (`ETKDGv3` + `MMFF94`) scored via `USRCAT` and `CrippenO3A` Shape Tanimoto against crystallographic `ZM241385`.
+  4. **Structure-Based Docking (AutoDock Vina):** prepare pH 7.4 wild-type `4EIY` with the orthosteric box centered on `ZM241385` and score all benchmark ligands; publish negative early-enrichment findings transparently alongside cognate redocking diagnostics.
+- [x] Quantify **docking / similarity score vs. experimental $pK_i$** correlation across 60 measured binders spanning 5 orders of magnitude (*score $\neq$ affinity*).
+- [x] Generate publication-quality figures in `reports/figures/`.
+
+### Phase 4 · Executive Summary & Release (`reports/executive_summary.md` + `README.md`)
+- [x] Write a 1-page executive summary tailored to AI/data engineers: therapeutic framing, *go/no-go* gates, curation choices, honest negative results, and production pipeline recommendations.
+- [x] Complete `README.md` and executed walkthrough notebook (`notebooks/01_adora2a_retrospective_audit.ipynb`).
+- [x] Verify `pytest` and `ruff check .` green + clean git commit.

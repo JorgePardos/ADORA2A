@@ -64,9 +64,9 @@ def plot_decoy_bias_control(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(1, 4, figsize=(14.0, 4.2), dpi=180)
     cols_to_show = [
-        ("mw", "Peso molecular (Da)"),
+        ("mw", "Molecular Weight (Da)"),
         ("clogp", "cLogP (Wildman-Crippen)"),
-        ("tpsa", "TPSA (Å²) — sesgo típico GPCR"),
+        ("tpsa", "TPSA (Å²) — Typical GPCR Bias"),
     ]
     for ax, (col, title) in zip(axes[:3], cols_to_show):
         bins = np.linspace(
@@ -74,17 +74,17 @@ def plot_decoy_bias_control(
             max(actives_df[col].max(), unmatched_df[col].max()),
             18,
         )
-        ax.hist(unmatched_df[col], bins=bins, density=True, alpha=0.35, color="#ef4444", label="Decoys al azar (sin emparejar)")
-        ax.hist(matched_df[col], bins=bins, density=True, alpha=0.45, color="#3b82f6", label="Decoys emparejados (7D)")
-        ax.hist(actives_df[col], bins=bins, density=True, histtype="step", lw=2.2, color="#111827", label="Activos ADORA2A")
+        ax.hist(unmatched_df[col], bins=bins, density=True, alpha=0.35, color="#ef4444", label="Random decoys (unmatched)")
+        ax.hist(matched_df[col], bins=bins, density=True, alpha=0.45, color="#3b82f6", label="7D-matched decoys")
+        ax.hist(actives_df[col], bins=bins, density=True, histtype="step", lw=2.2, color="#111827", label="ADORA2A actives")
         ax.set_title(title, fontsize=9.5, fontweight="bold")
-        ax.set_ylabel("Densidad", fontsize=8.5)
+        ax.set_ylabel("Density", fontsize=8.5)
         ax.grid(True, alpha=0.2)
         if col == "mw":
             ax.legend(loc="upper right", fontsize=7.0)
 
     ax4 = axes[3]
-    labels = ["LogReg\n(Azar)", "RF\n(Azar)", "LogReg\n(7D Match)", "RF\n(7D Match)"]
+    labels = ["LogReg\n(Random)", "RF\n(Random)", "LogReg\n(7D Match)", "RF\n(7D Match)"]
     aucs = [
         bias_res.unmatched_logistic_auc,
         bias_res.unmatched_rf_auc,
@@ -93,13 +93,13 @@ def plot_decoy_bias_control(
     ]
     bar_cols = ["#fca5a5", "#ef4444", "#86efac", "#22c55e"]
     bars = ax4.bar(labels, aucs, color=bar_cols, edgecolor="#334155", width=0.58)
-    ax4.axhline(0.60, color="#dc2626", linestyle="--", lw=1.2, label="Umbral NO-GO (0.60)")
-    ax4.axhline(0.50, color="#64748b", linestyle=":", lw=1.0, label="Azar ideal (0.50)")
+    ax4.axhline(0.60, color="#dc2626", linestyle="--", lw=1.2, label="NO-GO cutoff (0.60)")
+    ax4.axhline(0.50, color="#64748b", linestyle=":", lw=1.0, label="Ideal random (0.50)")
     for b, val in zip(bars, aucs):
         ax4.text(b.get_x() + b.get_width() / 2, val + 0.02, f"{val:.2f}", ha="center", fontsize=8.5, fontweight="bold")
     ax4.set_ylim(0, 0.98)
-    ax4.set_ylabel("ROC-AUC (5-fold CV solo props 1D)", fontsize=8.5)
-    ax4.set_title("Auditoría Go/No-Go de Fuga 1D", fontsize=9.5, fontweight="bold")
+    ax4.set_ylabel("ROC-AUC (5-fold CV, 1D props only)", fontsize=8.5)
+    ax4.set_title("1D Leakage Go/No-Go Audit", fontsize=9.5, fontweight="bold")
     ax4.tick_params(axis="x", labelsize=7.5)
     ax4.legend(loc="upper right", fontsize=7.2)
     ax4.grid(True, axis="y", alpha=0.2)
@@ -206,23 +206,24 @@ def main() -> None:
     # Level 2: 2D ECFP4 Tanimoto vs 4EIY ZMA
     bench_df["score_2d_zma"] = score_2d_ecfp4_similarity(bench_df["canonical_smiles"].tolist())
 
-    # Level 3: 3D Shape + USRCAT vs 4EIY ZMA
-    print("  Computing 3D conformers + USRCAT & CrippenO3A Shape Tanimoto (1,000 compounds)...")
-    usr_scores, shape_combo = score_3d_ligand_shape(bench_df["canonical_smiles"].tolist(), zma_3d_h)
-    bench_df["score_3d_usrcat"] = usr_scores
-    bench_df["score_3d_shape"] = shape_combo
-
-    # Level 4: Structure-based AutoDock Vina v1.2.7 on 4EIY
+    # Level 3 & Level 4: Reuse cached 3D shape & AutoDock Vina scores when molecules match
     cached_scores_path = PROC_DIR / "benchmark_1000_scores.csv"
-    if cached_scores_path.exists():
-        prev = pd.read_csv(cached_scores_path)
-        if list(prev["inchikey"]) == list(bench_df["inchikey"]) and "vina_kcal" in prev.columns:
-            print("  Reusing cached AutoDock Vina scores from benchmark_1000_scores.csv")
-            bench_df["vina_kcal"] = prev["vina_kcal"].to_numpy(dtype=float)
-        else:
-            bench_df["vina_kcal"] = score_autodock_vina(
-                bench_df["canonical_smiles"].tolist(), VINA_EXE, rec_pdbqt, box_center
-            )
+    prev_bench = pd.read_csv(cached_scores_path) if cached_scores_path.exists() else None
+    same_bench = prev_bench is not None and list(prev_bench["inchikey"]) == list(bench_df["inchikey"])
+
+    if same_bench and {"score_3d_usrcat", "score_3d_shape"}.issubset(prev_bench.columns):
+        print("  Reusing cached 3D USRCAT & Shape Tanimoto scores from benchmark_1000_scores.csv")
+        bench_df["score_3d_usrcat"] = prev_bench["score_3d_usrcat"].to_numpy(dtype=float)
+        bench_df["score_3d_shape"] = prev_bench["score_3d_shape"].to_numpy(dtype=float)
+    else:
+        print("  Computing 3D conformers + USRCAT & CrippenO3A Shape Tanimoto (1,000 compounds)...")
+        usr_scores, shape_combo = score_3d_ligand_shape(bench_df["canonical_smiles"].tolist(), zma_3d_h)
+        bench_df["score_3d_usrcat"] = usr_scores
+        bench_df["score_3d_shape"] = shape_combo
+
+    if same_bench and "vina_kcal" in prev_bench.columns:
+        print("  Reusing cached AutoDock Vina scores from benchmark_1000_scores.csv")
+        bench_df["vina_kcal"] = prev_bench["vina_kcal"].to_numpy(dtype=float)
     else:
         print("  Running AutoDock Vina v1.2.7 across 1,000 benchmark molecules...")
         bench_df["vina_kcal"] = score_autodock_vina(
@@ -252,16 +253,15 @@ def main() -> None:
     lin_idx = np.linspace(0, len(low_mid_pool) - 1, n_extra_target, dtype=int)
     extra_panel = pd.concat([extra_refs, low_mid_pool.iloc[lin_idx]], ignore_index=True)
 
-    extra_panel["score_2d_zma"] = score_2d_ecfp4_similarity(extra_panel["canonical_smiles"].tolist())
-    _, extra_shape = score_3d_ligand_shape(extra_panel["canonical_smiles"].tolist(), zma_3d_h)
-    extra_panel["score_3d_shape"] = extra_shape
-
     extra_cache = PROC_DIR / "affinity_panel_60_scores.csv"
     if extra_cache.exists():
         ep_prev = pd.read_csv(extra_cache)
         if len(ep_prev) == len(actives_df) + len(extra_panel):
             affinity_panel = ep_prev
         else:
+            extra_panel["score_2d_zma"] = score_2d_ecfp4_similarity(extra_panel["canonical_smiles"].tolist())
+            _, extra_shape = score_3d_ligand_shape(extra_panel["canonical_smiles"].tolist(), zma_3d_h)
+            extra_panel["score_3d_shape"] = extra_shape
             extra_panel["vina_kcal"] = score_autodock_vina(
                 extra_panel["canonical_smiles"].tolist(), VINA_EXE, rec_pdbqt, box_center
             )
@@ -279,6 +279,9 @@ def main() -> None:
             )
             affinity_panel.to_csv(extra_cache, index=False)
     else:
+        extra_panel["score_2d_zma"] = score_2d_ecfp4_similarity(extra_panel["canonical_smiles"].tolist())
+        _, extra_shape = score_3d_ligand_shape(extra_panel["canonical_smiles"].tolist(), zma_3d_h)
+        extra_panel["score_3d_shape"] = extra_shape
         extra_panel["vina_kcal"] = score_autodock_vina(
             extra_panel["canonical_smiles"].tolist(), VINA_EXE, rec_pdbqt, box_center
         )
@@ -318,9 +321,9 @@ def main() -> None:
     # Evaluate all 4 main screening levels + CIs
     y_bench = bench_df["is_active"].to_numpy(dtype=int)
     method_scores = {
-        "1D Fisicoquímico (Control)": bench_df["score_1d_rf"].to_numpy(dtype=float),
+        "1D Physicochemical (Control)": bench_df["score_1d_rf"].to_numpy(dtype=float),
         "2D ECFP4 (vs ZM241385)": bench_df["score_2d_zma"].to_numpy(dtype=float),
-        "3D Forma + USRCAT (vs ZMA)": bench_df["score_3d_shape"].to_numpy(dtype=float),
+        "3D Shape + USRCAT (vs ZMA)": bench_df["score_3d_shape"].to_numpy(dtype=float),
         "3D Docking (AutoDock Vina · 4EIY)": bench_df["vina_neg_kcal"].to_numpy(dtype=float),
     }
 
@@ -330,12 +333,12 @@ def main() -> None:
     hop_2d = evaluate_screening(
         y_hop,
         bench_df.loc[non_analogue_mask, "score_2d_zma"].to_numpy(dtype=float),
-        method="2D ECFP4 (sin análogos ZMA, ECFP4<0.35)",
+        method="2D ECFP4 (no ZMA analogues, ECFP4<0.35)",
     )
     hop_vina = evaluate_screening(
         y_hop,
         bench_df.loc[non_analogue_mask, "vina_neg_kcal"].to_numpy(dtype=float),
-        method="AutoDock Vina (sin análogos ZMA, ECFP4<0.35)",
+        method="AutoDock Vina (no ZMA analogues, ECFP4<0.35)",
     )
 
     metrics_list = []

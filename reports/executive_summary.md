@@ -1,48 +1,48 @@
-# Resumen Ejecutivo · Auditoría Retrospectiva de Cribado Virtual en ADORA2A
+# Executive Summary · ADORA2A Retrospective Virtual Screening Audit
 
-**Audiencia:** Equipos de Ingeniería de IA, Ciencia de Datos y Química Computacional  
-**Diana biológica:** Receptor humano de adenosina $A_{2A}$ (`ADORA2A`, UniProt `P29274`, ChEMBL `CHEMBL251`, GPCR de Clase A)  
-**Pregunta terapéutica y de ingeniería:** *Antes de escalar un pipeline de cribado virtual o entrenar un modelo ML sobre decenas de millones de compuestos para antagonistas de $A_{2A}$ (inmuno-oncología / enfermedad de Parkinson), ¿qué decisiones estructurales y de curación evitan fugas de datos, y qué métodos aportan enriquecimiento temprano real cuando eliminamos los artefactos triviales?*
+**Target Audience:** AI Engineering, Data Science, and Computational Chemistry Teams  
+**Biological Target:** Human Adenosine $A_{2A}$ Receptor (`ADORA2A`, UniProt `P29274`, ChEMBL `CHEMBL251`, Class A GPCR)  
+**Core Engineering Question:** *Before scaling a virtual screening pipeline or training an ML potency model across multi-million-compound libraries for $A_{2A}$ antagonists (immuno-oncology / Parkinson's disease), which structural and data-curation gates prevent benchmark leakage, and which methods deliver genuine early enrichment once trivial shortcuts are removed?*
 
 ---
 
-## 1. Puertas de calidad explícitas (*Go / No-Go*)
+## 1. Explicit Quality Gates (*Go / No-Go*)
 
-| Puerta de auditoría | Criterio cuantitativo *Go / No-Go* | Resultado observado | Estado |
+| Audit Gate | Quantitative *Go / No-Go* Criterion | Empirical Finding | Status |
 | :--- | :--- | :--- | :---: |
-| **1. Integridad del bolsillo 3D** | Cero mutaciones ingenieriles en residuos de contacto ortostérico/alostérico; estado conformacional coherente con la modalidad (`Inactive` para antagonistas). | Se descartan `5NM4` (1,70 Å) y `5IU4` (1,72 Å) —y el **66,0 % (`124/188`)** del PDB de $A_{2A}$— por portar mutaciones `StaR2` (`T88A`, `S277A`) **dentro del bolsillo**. Se elige **`4EIY` (1,80 Å, bolsillo 100 % *wild-type* + $\text{Na}^+$ alostérico)** y **`9EE8` (2,63 Å, activa + $G_s$)** para agonistas. | **GO** |
-| **2. Trazabilidad y pureza de ensayo** | Conservar `assay_chembl_id`, `confidence_score >= 8`, relación exacta `'='`, separar $K_i$ de unión (`Ki_B`) de $IC_{50}$ funcional y excluir agonistas ribosídicos del cribado inactivo. | De `12.105` registros brutos $\rightarrow$ `5.901` medidas exactas `Ki_B` $\rightarrow$ **`4.972` estructuras padre únicas (`InChIKey`)**, marcando `44` compuestos con discrepancia inter-ensayo $> 1$ unidad log y excluyendo `546` agonistas. | **GO** |
-| **3. Alertas estructurales con contexto** | Auditar PAINS/Brenk sin borrado ciego de quimiotipos clínicos validados. | Un filtro ciego PAINS/Brenk habría eliminado **3 antagonistas clínicos co-cristalizados de Fase 2/3**: `Tozadenant` (PAINS `anil_di_alk_C`), `Vipadenant` (Brenk `aniline`) e `Imaradenant` (Brenk `2-halo_pyridine`). | **GO** |
-| **4. Control de sesgo 1D en decoys** | Un clasificador 1D (`MW`, `cLogP`, `TPSA`, `HBD`, `HBA`, `RotBonds`, `Charge`) debe obtener $\text{ROC-AUC} \le 0,60$ en validación cruzada. | Decoys aleatorios de ChEMBL sufren fuga masiva (**AUC = `0,81` LogReg / `0,78` RF**, impulsada por la alta `TPSA` de ligandos $A_{2A}$). Tras emparejamiento 7D + disimilitud ECFP4 $< 0,35$, cae a **`0,48` / `0,35`**. | **GO** |
+| **1. 3D Pocket Integrity** | Zero engineered mutations in orthosteric/allosteric contact residues; conformational state matched to ligand modality (`Inactive` for antagonists). | Rejected `5NM4` (1.70 Å) and `5IU4` (1.72 Å)—along with **66.0% (`124/188`)** of all $A_{2A}$ PDB entries—due to `StaR2` mutations (`T88A`, `S277A`) **inside the pocket**. Selected **`4EIY` (1.80 Å, 100% wild-type pocket + allosteric $\text{Na}^+$)** for antagonists and **`9EE8` (2.63 Å, active + $G_s$)** for agonists. | **GO** |
+| **2. Assay Purity & Provenance** | Retain `assay_chembl_id`, `confidence_score >= 8`, exact `'='` relation; separate equilibrium binding $K_i$ (`Ki_B`) from functional $IC_{50}$; exclude ribose agonists from inactive screening. | From `12,105` raw records $\rightarrow$ `5,901` exact `Ki_B` measurements $\rightarrow$ **`4,972` unique parent structures (`InChIKey`)**, flagging `44` compounds with $> 1$ log-unit inter-assay discrepancy and excluding `546` agonists. | **GO** |
+| **3. Contextual Structural Alerts** | Audit PAINS/Brenk alerts without blind deletion of clinically validated chemotypes. | Blind PAINS/Brenk filtering would have silently deleted **3 co-crystallized Phase 2/3 clinical antagonists**: `Tozadenant` (PAINS `anil_di_alk_C`), `Vipadenant` (Brenk `aniline`), and `Imaradenant` (Brenk `2-halo_pyridine`). | **GO** |
+| **4. 1D Decoy-Bias Control** | A 1D physicochemical classifier (`MW`, `cLogP`, `TPSA`, `HBD`, `HBA`, `RotBonds`, `Charge`) must yield cross-validated $\text{ROC-AUC} \le 0.60$. | Unmatched ChEMBL decoys suffer severe 1D leakage (**AUC = `0.81` LogReg / `0.78` RF**, driven by elevated `TPSA` in $A_{2A}$ heterocycles). Joint 7D matching + `ECFP4 < 0.35` reduces 1D AUC to **`0.48` / `0.35`**. | **GO** |
 
 ---
 
-## 2. Resultados honestos del benchmark retrospectivo (1.000 compuestos · 2,5 % hits)
+## 2. Honest Retrospective Benchmark Results (1,000 Compounds · 2.5% Hit Rate)
 
-Sobre el mismo set libre de sesgo 1D (`25` antagonistas potentes diversos + `975` decoys emparejados en 7D; tasa basal de hits = `2,5 %`, *accuracy* trivial al predecir "todo inactivo" = **`97,5 %`**, máximo teórico $\text{EF1\%} = 40,0\times$):
+Evaluated on the exact same 1D-debiased benchmark (`25` scaffold-diverse potent antagonists + `975` 7D-matched decoys; baseline hit rate = `2.5%`, naive "predict all inactive" accuracy = **`97.5%`**, theoretical $\text{EF1\%}_{\max} = 40.0\times$):
 
-| Nivel / Método | EF1% (IC 95%) | EF5% | BEDROC ($\alpha=20$) | ROC-AUC | PR-AUC | Accuracy @ Top 1% | Lectura crítica para ingeniería |
+| Level / Method | EF1% (95% CI) | EF5% | BEDROC ($\alpha=20$) | ROC-AUC | PR-AUC | Accuracy @ Top 1% | Key Takeaway for Engineering |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **1. Control 1D (RF fisicoquímico)** | `0,0x` `(0–0)` | `0,0x` | `0,026` | `0,346` | `0,019` | `96,5 %` | Confirma ausencia de fuga fisicoquímica trivial; fíjese en el engañoso `96,5 %` de *accuracy*. |
-| **2. Baseline 2D (ECFP4 vs. `ZM241385`)** | **`36,0x`** `(16–40)` | **`9,6x`** | **`0,519`** | `0,725` | **`0,433`** | `98,3 %` | Recupera 9 de 10 hits en el Top 1%, pero depende de similitud topológica al quimiotipo consulta (`23,7x` al excluir análogos cercanos). |
-| **3. Forma 3D (`ETKDGv3` + `USRCAT` + `O3A`)** | `8,0x` `(0–20)` | `6,4x` | `0,355` | `0,722` | `0,166` | `96,9 %` | **Mismo ROC-AUC global (`0,722` vs. `0,725`) que 2D**, pero **4,5× menos enriquecimiento en el Top 1%**: ejemplo real de por qué ROC-AUC no basta. |
-| **4. Docking 3D (`AutoDock Vina` · `4EIY`)** | **`0,0x`** `(0–0)` | `0,8x` | `0,063` | `0,584` | `0,033` | `96,5 %` | **Resultado negativo claro:** una vez eliminado el sesgo de peso molecular/lipofilia, el docking rígido sin aguas estructurales fracasa en el Top 1%. |
+| **1. 1D Control (Physicochemical RF)** | `0.0x` `(0–0)` | `0.0x` | `0.026` | `0.346` | `0.019` | `96.5%` | Confirms absence of 1D property leakage; note the deceptive `96.5%` accuracy. |
+| **2. 2D Baseline (ECFP4 vs. `ZM241385`)** | **`36.0x`** `(16–40)` | **`9.6x`** | **`0.519`** | `0.725` | **`0.433`** | `98.3%` | Recovers 9/10 hits in Top 1%, but relies on topological proximity to query (`23.7x` once close analogues are removed). |
+| **3. 3D Shape (`ETKDGv3` + `USRCAT` + `O3A`)** | `8.0x` `(0–20)` | `6.4x` | `0.355` | `0.722` | `0.166` | `96.9%` | **Identical global ROC-AUC (`0.722` vs. `0.725`) to 2D**, yet **4.5× lower Top-1% enrichment**: textbook proof that ROC-AUC is insufficient. |
+| **4. 3D Docking (`AutoDock Vina` · `4EIY`)** | **`0.0x`** `(0–0)` | `0.8x` | `0.063` | `0.584` | `0.033` | `96.5%` | **Clear negative result:** once MW/lipophilicity shortcuts are removed, rigid water-free docking fails in the Top 1%. |
 
 ---
 
-## 3. Qué NO funcionó y por qué (diagnóstico mecanicista)
+## 3. What Failed and Why (Mechanistic Diagnostics)
 
-1. **El docking rígido deshidratado (`AutoDock Vina`) es superado claramente por métodos 2D y de forma 3D:**
-   - En el re-docking cognado de `ZM241385` sobre `4EIY` sin aguas cristalográficas, la pose invertida (`-9,08 kcal/mol`) y la pose cristalográfica nativa (rango 3, `-8,93 kcal/mol`, oxígeno furánico a `0,41 Å` del cristal) difieren en solo **`0,15 kcal/mol`** (dentro del ruido de la función de score). Al retirar las aguas conservadas (`HOH 2503–2505`), decoys heteroaromáticos hidrofóbicos de igual `MW` y `TPSA` ocupan el vestíbulo extracelular con energías de `-10` a `-12 kcal/mol` (falsos positivos), mientras que antagonistas reales voluminosos chocan con la conformación rígida inducida por `ZM241385` (falsos negativos).
-2. **Score de cribado $\neq$ afinidad experimental ($pK_i$):**
-   - Evaluando **60 ligandos con $K_i$ experimental** a lo largo de 5 órdenes de magnitud ($pK_i \in [4,8;\; 11,0]$), el score de AutoDock Vina explica apenas un **2,6 % de la varianza** ($r = +0,161$, $R^2 = 0,026$, $p = 0,22$) y la similitud 2D ECFP4 un **6,0 %** ($r = +0,246$, $R^2 = 0,060$). Las funciones rápidas de cribado sirven para **priorizar subconjuntos enriquecidos**, nunca como sustituto directo de $\Delta G_{\text{bind}}$ (que requiere FEP/ABFE o ensayos biofísicos).
-3. **Caída al saltar de andamio químico (*Murcko scaffold split*):**
-   - Evaluar modelos supervisados 2D mediante *random split* sobreestima el rendimiento porque reparte análogos metil/cloro de una misma serie entre entrenamiento y test; el particionado estricto por **andamio de Murcko** es obligatorio para estimar la tasa de acierto sobre series químicas nuevas.
+1. **Dehydrated rigid-receptor docking (`AutoDock Vina`) underperforms 2D similarity and 3D ligand shape:**
+   - In our cognate `ZM241385` redocking audit on water-stripped `4EIY`, a head-to-tail flipped pose (`-9.08 kcal/mol`) and the native crystal orientation (rank 3, `-8.93 kcal/mol`, furan oxygen within `0.41 Å` of X-ray) differ by only **`0.15 kcal/mol`**—well inside Vina's scoring noise. Stripping conserved bridging waters (`HOH 2503–2505`) removes polar desolvation penalties in the deep cavity, allowing matched polyaromatic decoys (`-10` to `-12 kcal/mol`) to crowd the Top 1% (false positives) while rigid `ZM241385`-adapted sidechains penalize bulkier clinical antagonists (false negatives, e.g., `CHEMBL2419139`, $pK_i = 11.0$, $\Delta G = -6.6\text{ kcal/mol}$).
+2. **Virtual screening score $\neq$ experimental binding affinity ($pK_i$):**
+   - Across **60 experimentally measured $K_i$ ligands** spanning > 5 log units ($pK_i \in [4.0,\; 11.0]$), AutoDock Vina explains only **2.6% of variance** ($r = +0.161$, $R^2 = 0.026$, $p = 0.22$) and 2D ECFP4 explains **6.0%** ($r = +0.246$, $R^2 = 0.060$). Fast screening scores rank enriched hit lists; they are never drop-in surrogates for $\Delta G_{\text{bind}}$ (which requires FEP/ABFE or biophysical assays).
+3. **Scaffold-hop degradation under *Murcko scaffold splitting*:**
+   - On experimental `CHEMBL251` $K_i$ data ($n = 1,661$), switching from stratified random CV to **Murcko scaffold group CV** drops `PR-AUC` from `0.917` to `0.880` and `BEDROC` from `0.947` to `0.914`; similarly, removing close `ZM241385` analogues (`ECFP4 >= 0.35`) cuts unsupervised 2D `EF1%` from `36.0x` to `23.7x`.
 
 ---
 
-## 4. Recomendaciones accionables para un pipeline productivo
+## 4. Actionable Recommendations for Production Pipelines
 
-1. **Bloqueo automático de estructuras mutadas en el bolsillo:** cruzar siempre GPCRdb + coordenadas atómicas antes de parametrizar un receptor (descartando mutaciones `StaR2` `T88A`/`S277A` y ajustando protonación a pH 7,4 en `Glu169`/`Asp52`).
-2. **Arquitectura jerárquica en embudo (2D/3D rápido $\rightarrow$ *Ensemble Docking* con aguas explícitas $\rightarrow$ re-scoring físico):** filtrar primero por modelos 2D/farmacofóricos validados bajo *Murcko split* y forma 3D (`USRCAT`/`O3A`), y reservar el docking para un **ensemble de conformaciones inactivas** (`4EIY`, `5OLZ`, `6GT3`) **conservando las aguas estructurales puente** del bolsillo profundo y aplicando *pharmacophore tethering* sobre `Asn253^{6.55}` y `Phe168^{ECL2}`.
-3. **Gobernanza de métricas en CI/CD de modelos:** prohibir *accuracy* y exigir siempre **EF1%**, **BEDROC ($\alpha=20$)** y **PR-AUC** con intervalos bootstrap junto con una puerta automática de **control negativo 1D ($\text{ROC-AUC} < 0,60$)** cada vez que se actualice un benchmark.
+1. **Automated pocket-mutation & protonation gate:** programmatically cross-check GPCRdb state + atomic residue identities before receptor preparation (blocking `StaR2` `T88A`/`S277A` constructs and enforcing pH 7.4 anionic carboxylates on `Glu169`/`Asp52`).
+2. **Hierarchical funnel architecture (Fast 2D/3D $\rightarrow$ Hydrated Ensemble Docking $\rightarrow$ Physics Rescoring):** triage libraries with Murcko-validated 2D models and 3D shape/pharmacophore descriptors (`USRCAT`/`O3A`), then dock candidates into a **multi-crystal inactive ensemble** (`4EIY`, `5OLZ`, `6GT3`) **retaining ordered deep-pocket waters** and enforcing H-bond pharmacophore constraints on `Asn253^{6.55}` and `Phe168^{ECL2}`.
+3. **Metric governance in ML CI/CD:** ban *accuracy*, require **EF1%**, **BEDROC ($\alpha=20$)**, and **PR-AUC** with bootstrap confidence intervals, and enforce an automated **1D adversarial decoy gate ($\text{ROC-AUC} < 0.60$)** on every benchmark update.
