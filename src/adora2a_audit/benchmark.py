@@ -926,7 +926,7 @@ def plot_affinity_vs_scores(
         )
         ax.set_xlabel("Experimental ChEMBL pKi", fontsize=9.0)
         ax.set_ylabel("Predicted −ΔG (kcal/mol, higher = stronger)", fontsize=9.0)
-        ax.legend(loc="lower right", fontsize=7.0)
+        ax.legend(loc="upper right", fontsize=7.0, framealpha=0.92)
         ax.grid(True, alpha=0.22)
 
     # Panel C: 2D ECFP4 similarity to ZM241385 vs experimental pKi
